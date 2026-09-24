@@ -262,6 +262,69 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
   background:var(--text); color:#fff; padding:13px 22px; border-radius:13px; font-size:14px;
   box-shadow:0 12px 32px rgba(31,41,55,.28); z-index:90; max-width:calc(100% - 48px)}
 
+
+/* ---------- добавленные разделы ---------- */
+.head-row{display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap}
+.head-acts{display:flex; gap:10px; flex-wrap:wrap; padding-top:6px}
+.head-acts .btn{display:inline-flex; align-items:center; gap:8px}
+
+h2.sect{font-size:21px; font-weight:700; margin:30px 0 14px; letter-spacing:-.3px}
+
+.cards3{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:8px}
+.cards3 .card{margin-bottom:0}
+
+/* поля ввода — всегда белые, фокус фиолетовый */
+.search{
+  flex:1; min-width:240px; max-width:460px; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-input);
+  padding:10px 14px; font-size:14.5px; color:var(--text);
+}
+.search:focus{outline:0; border-color:var(--primary); box-shadow:0 0 0 3px rgba(111,61,255,.14)}
+.fld{display:block; margin-bottom:16px; font-size:13.5px; color:var(--muted); font-weight:550}
+.fld input, .fld textarea{
+  display:block; width:100%; margin-top:7px; background:var(--surface); color:var(--text);
+  border:1px solid var(--border); border-radius:var(--r-input);
+  padding:11px 14px; font-size:15px; line-height:1.5;
+}
+.fld textarea{min-height:110px; resize:vertical}
+.fld input:focus, .fld textarea:focus{outline:0; border-color:var(--primary); box-shadow:0 0 0 3px rgba(111,61,255,.14)}
+
+/* выбор режима — крупные цели нажатия */
+.opt{
+  display:block; border:1px solid var(--border); border-radius:14px;
+  padding:14px 18px; margin-bottom:10px; cursor:pointer; background:var(--surface);
+  transition:border-color .12s, background .12s;
+}
+.opt:hover{border-color:var(--secondary)}
+.opt.on{border-color:var(--primary); background:var(--lilac)}
+.opt b{display:block; font-size:15.5px; margin-bottom:3px}
+.opt span{color:var(--muted); font-size:14px}
+.opt.on span{color:var(--primary)}
+
+/* лист для вклейки в бумажный журнал */
+.glue{border:1px solid var(--border); border-radius:12px; overflow:hidden; font-size:13px}
+.glue-head, .glue-row{display:grid; grid-template-columns:92px 1.4fr 130px 1.6fr; gap:12px; padding:9px 14px}
+.glue-head{background:var(--bg); font-weight:650; color:var(--muted); border-bottom:1px solid var(--border)}
+.glue-row{border-bottom:1px solid var(--border-soft)}
+.glue-row:last-child{border-bottom:0}
+.glue-row span{overflow-wrap:anywhere}
+
+/* предпросмотр печати материала */
+.print-sheet{border:1px solid var(--border); border-radius:12px; padding:22px 24px; background:var(--surface); line-height:1.7}
+.print-head{font-size:13px; color:var(--muted); border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px}
+.print-body{margin-top:16px; padding-top:16px; border-top:1px solid var(--border-soft)}
+.print-foot{margin-top:18px; padding-top:12px; border-top:1px solid var(--border); font-size:13px; color:var(--muted)}
+
+a.btn{text-decoration:none}
+
+@media (max-width:1180px){ .cards3{grid-template-columns:1fr} }
+@media print{
+  .sidebar, .topbar, .mf, .mh, .bar, .head-acts{display:none !important}
+  .back{position:static; background:none; padding:0; display:block}
+  .modal{box-shadow:none; border:0; max-height:none; width:100%}
+  body{background:#fff}
+}
+
 /* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
 @media (max-width:1180px){
   .split{grid-template-columns:1fr}
@@ -326,6 +389,7 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
+<script src="data-reference.js"></script>
 <script src="data-shift-normal.js"></script>
 <script src="data-shift-peak.js"></script>
 <script>
@@ -440,6 +504,9 @@ const S = {
   redactId: null,
   redactCut: [],
   shown: 30,                 // сколько строк показано в текущей стопке
+  typeFilter: 'all',         // текст / голос / видео
+  paper: 'mixed',            // бумажный путь
+  archiveQuery: '',
   total: 0
 };
 S.queue = loadQueue(S.set);
@@ -500,16 +567,37 @@ const ICON = {
   inbox: SVG('<path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14l2 7v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z"/>'),
   clock: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   time:  SVG('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/>'),
+  tasks: SVG('<path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/>'),
+  archive: SVG('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8"/><path d="M10 12h4"/>'),
+  reports: SVG('<path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M8 13h8"/><path d="M8 17h5"/>'),
+  channel: SVG('<path d="M21 12a8 8 0 01-11.5 7.2L3 21l1.8-6.5A8 8 0 1121 12z"/>'),
+  legal: SVG('<path d="M4 5a2 2 0 012-2h13v18H6a2 2 0 01-2-2z"/><path d="M9 7h7"/><path d="M9 11h7"/>'),
+  support: SVG('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.8.6-1.5 1.1-1.5 2"/><path d="M12 17.5h.01"/>'),
+  ban: SVG('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>'),
+  scissors: SVG('<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8.5 16.5"/><path d="M20 20L8.5 7.5"/>'),
+  printer: SVG('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 15h12v6H6z"/>'),
 };
 
 const NAV = [
-  ['queue', ICON.queue, 'Лента цензуры'],
-  ['log', ICON.log, 'Журнал решений']
+  ['queue',       ICON.queue,   'Лента цензуры'],
+  ['assignments', ICON.tasks,   'Мои поручения'],
+  ['archive',     ICON.archive, 'Архив решений'],
+  ['reports',     ICON.reports, 'Журналы и отчёты'],
+  ['channel',     ICON.channel, 'Канал ОСНОВЫ'],
+  ['legal',       ICON.legal,   'Нормативные акты'],
+  ['support',     ICON.support, 'Поддержка'],
 ];
 function renderNav(){
   document.getElementById('nav').innerHTML = NAV.map(([v,i,t])=>{
-    const badge = v==='queue' ? `<span class="badge tnum">${leftAll().length}</span>`
-                : v==='log'   ? `<span class="badge tnum">${S.log.length}</span>` : '';
+    const counts = {
+      queue: leftAll().length,
+      assignments: REF.assignments.filter(x=>x.status==='open').length,
+      archive: S.queue.filter(x=>x.status!=='queue').length,
+      reports: S.log.length,
+      channel: REF.channel.length,
+    };
+    const n = counts[v];
+    const badge = n ? `<span class="badge tnum">${n}</span>` : '';
     return `<button class="${S.view===v?'active':''}" onclick="go('${v}')"><span class="ico">${i}</span><span>${t}</span>${badge}</button>`;
   }).join('');
 }
@@ -518,7 +606,8 @@ function go(v){S.view=v; S.openId=null; S.conveyor=null; render()}
 /* ---------------- экран 1: лента ---------------- */
 function renderQueue(){
   const g=left('green').length, o=left('orange').length, r=left('red').length;
-  const cur = left(S.stack);
+  const cur = left(S.stack).filter(x => S.typeFilter === 'all' || x.kind === S.typeFilter);
+  const byType = { text: left(S.stack).filter(x=>x.kind==='text').length, audio: left(S.stack).filter(x=>x.kind==='audio').length, video: left(S.stack).filter(x=>x.kind==='video').length };
   const bulk = bulkSet(S.stack);
   const samples = S.stack==='green' ? cur.filter(x=>x.sample).length : 0;
 
@@ -536,7 +625,12 @@ function renderQueue(){
   const page = cur.slice(0, S.shown);
 
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Лента цензуры</h1><p>Материалы за смену разложены по трём стопкам. Начните с зелёных.</p></div>
+    <div class="page-head head-row">
+      <div><h1>Лента цензуры</h1><p>Материалы за смену разложены по трём стопкам. Начните с зелёных.</p></div>
+      <div class="head-acts">
+        <button class="btn sm" onclick="openPaperMode()">${ICON.printer} Бумажный путь: ${PAPER_LABEL[S.paper]}</button>
+      </div>
+    </div>
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div><div class="k">Поступило за смену</div><div class="v tnum">${S.total}</div><div class="d">материалов</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div><div class="k">Разобрано</div><div class="v tnum">${decidedCount()}</div><div class="d">осталось ${leftAll().length}</div></div>
@@ -561,6 +655,14 @@ function renderQueue(){
           <span class="dot"></span>
           <span><span class="n tnum">${k==='green'?g:k==='orange'?o:r}</span> ${RISK_NAME[k]}</span>
         </button>`).join('')}
+    </div>
+
+    <div class="bar">
+      <span class="lab">Тип:</span>
+      <div class="seg">
+        ${[['all','Все'],['text','Письма'],['audio','Голос'],['video','Видео']].map(([k,t])=>
+          `<button class="${S.typeFilter===k?'on':''}" onclick="setType('${k}')">${t}${k==='all'?'':' · '+byType[k]}</button>`).join('')}
+      </div>
     </div>
 
     ${cur.length ? `
@@ -607,13 +709,16 @@ function rowHTML(x){
       </div>
     </div>
     <div class="acts">
-      <button class="btn sm" onclick="openCard('${x.id}')">Открыть</button>
+      <button class="btn sm" onclick="openContext('${x.id}')" title="Другие материалы этих людей">Контекст</button>
+      <button class="btn sm" onclick="openPrint('${x.id}')" title="Напечатать материал">Печать</button>
+      <button class="btn sm primary" onclick="openCard('${x.id}')">Открыть</button>
     </div>
   </div>`;
 }
 function toggleFold(id){document.getElementById('f-'+id)?.classList.toggle('open')}
 function setStack(k){S.stack=k; S.shown=30; render()}
 function setTrust(t){S.trust=t; S.shown=30; render()}
+function setType(k){ S.typeFilter = k; S.shown = 30; render() }
 function setSet(name){
   S.set = name;
   S.queue = loadQueue(name);
@@ -716,6 +821,8 @@ function renderCard(){
   document.getElementById('content').innerHTML = `
     ${inConv?`<div class="progress"><span>Разбор подряд · ${pos} из ${S.conveyor.length}</span><span class="pbar"><i style="width:${Math.round(pos/S.conveyor.length*100)}%"></i></span></div>`:''}
     <div class="bar"><button class="btn sm" onclick="go('queue')">← В ленту</button>
+      <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>
+      <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
       <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
       ${x.sample?'<span class="chip a">выборочная проверка качества</span>':''}
       ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
@@ -856,16 +963,396 @@ function entryHTML(e){
   </div>`;
 }
 
+/* ====================================================================
+   ОСТАЛЬНЫЕ РАЗДЕЛЫ РАБОЧЕГО МЕСТА
+   Поручения, архив, журналы и отчёты, канал, нормативные акты, поддержка.
+   Содержание приходит из data-reference.js — прототип его не выдумывает.
+   ==================================================================== */
+
+const REF = window.OSNOVA_REF || { assignments: [], channel: [], legal: [], appeals: [], support: { topics: [] } };
+
+/* ---------------- Мои поручения ---------------- */
+
+function renderAssignments(){
+  const list = REF.assignments;
+  const open = list.filter(x => x.status === 'open');
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Мои поручения</h1>
+      <p>Задания от руководства и системы. Срок ближайшего — ${open.length ? esc(open[0].due) : '—'}.</p></div>
+    ${list.map(x => `
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap">
+          <div>
+            <div style="font-weight:650; font-size:16px; margin-bottom:4px">${esc(x.title)}</div>
+            <div class="top-sub">${esc(x.id)} · ${esc(x.from)} · срок: ${esc(x.due)}</div>
+            <div style="margin-top:9px; color:var(--muted); font-size:14px">${esc(x.note)}</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center">
+            ${x.urgent && x.status === 'open' ? '<span class="chip r">срочно</span>' : ''}
+            ${x.status === 'done'
+              ? '<span class="chip g">выполнено</span>'
+              : `<button class="btn sm primary" onclick="closeAssignment('${x.id}')">Отметить выполненным</button>`}
+          </div>
+        </div>
+      </div>`).join('')}
+  `;
+}
+function closeAssignment(id){
+  const a = REF.assignments.find(x => x.id === id);
+  if (a) { a.status = 'done'; toast('Поручение ' + id + ' отмечено выполненным'); render(); }
+}
+
+/* ---------------- Архив решений ---------------- */
+
+function renderArchive(){
+  const q = (S.archiveQuery || '').toLowerCase();
+  const all = S.queue.filter(x => x.status !== 'queue');
+  const list = q ? all.filter(x => (x.from + ' ' + x.to + ' ' + x.id).toLowerCase().includes(q)) : all;
+  const page = list.slice(0, S.shown);
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Архив решений</h1>
+      <p>Любое решение хранится и может быть пересмотрено. Пересмотр не стирает прежнюю запись — он создаёт новую.</p></div>
+    <div class="bar">
+      <input id="archQ" class="search" placeholder="Поиск по отправителю, получателю или номеру"
+             value="${esc(S.archiveQuery || '')}" oninput="S.archiveQuery=this.value; S.shown=30; renderArchive(); document.getElementById('archQ').focus()">
+      <span class="chip">${list.length} из ${all.length}</span>
+    </div>
+    ${all.length ? `
+      <div class="rows">${page.map(x => `
+        <div class="row">
+          <div class="stripe ${RISK_LETTER[x.risk]}"></div>
+          <div>
+            <div class="who">${esc(x.from)} → ${esc(x.to)}</div>
+            <div class="meta">${x.id} · ${x.at} · ${esc(x.kindLabel)}</div>
+            <div class="marks">
+              <span class="chip ${x.status === 'allowed' ? 'g' : x.status === 'denied' ? 'r' : 'o'}">${
+                x.status === 'allowed' ? 'разрешено' : x.status === 'denied' ? 'не допущено' : 'пропущено с изъятием'}</span>
+            </div>
+          </div>
+          <div><div class="sum">${esc(x.sum)}</div><div class="why">${esc(x.why)}</div></div>
+          <div class="acts">
+            <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
+            <button class="btn sm" onclick="openCard('${x.id}')">Посмотреть</button>
+            <button class="btn sm primary" onclick="reviseDecision('${x.id}')">Пересмотреть</button>
+          </div>
+        </div>`).join('')}
+      </div>
+      ${list.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${list.length - page.length}</button></div>` : ''}
+    ` : `<div class="empty"><div class="big">${ICON.clock}</div><b>Архив пуст</b><div>Решённые материалы появятся здесь после разбора ленты.</div></div>`}
+  `;
+}
+
+function reviseDecision(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const прежнее = S.log.find(e => e.id === id);
+  modal(`
+    <div class="mh"><div><h3>Пересмотреть решение</h3>
+      <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${x.id}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note"><b>Прежнее решение сохранится.</b> Новое будет записано отдельно, со ссылкой на прежнее — так видно, что и когда изменилось.</div>
+      ${прежнее ? `<div class="kv" style="margin-top:14px">
+        <div class="k">Было</div><div>${прежнее.decision === 'allow' ? 'разрешено' : прежнее.decision === 'deny' ? 'не допущено' : 'пропущено с изъятием'}</div>
+        <div class="k">Основание</div><div>${esc(прежнее.basis)}</div>
+        <div class="k">Когда</div><div>${esc(прежнее.at)}</div>
+      </div>` : ''}
+      <div style="margin-top:16px"><label class="fld">Причина пересмотра
+        <textarea id="revReason" placeholder="Например: поступили дополнительные сведения от оперативного отдела"></textarea></label></div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn danger" onclick="applyRevision('${id}','deny')">Не допустить</button>
+      <button class="btn primary" onclick="applyRevision('${id}','allow')">Разрешить</button>
+    </div>`);
+}
+function applyRevision(id, what){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const reason = (document.getElementById('revReason') || {}).value || 'причина не указана';
+  const прежнее = S.log.find(e => e.id === id);
+  x.status = what === 'allow' ? 'allowed' : 'denied';
+  S.log.unshift({
+    id: x.id, from: x.from, to: x.to, decision: what,
+    basis: 'пересмотр решения: ' + reason,
+    by: 'Соколова Е.С., цензор', at: nowStamp(), group: 1,
+    supersedes: прежнее ? прежнее.at : null,
+  });
+  closeModal(); render();
+  toast('Решение пересмотрено. Прежняя запись сохранена.');
+}
+
+/* ---------------- Журналы и отчёты ---------------- */
+
+function renderReports(){
+  const a = S.log.filter(e => e.decision === 'allow').length;
+  const d = S.log.filter(e => e.decision === 'deny').length;
+  const p = S.log.filter(e => e.decision === 'partial').length;
+  const grp = S.log.filter(e => e.group > 1).length;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Журналы и отчёты</h1>
+      <p>Электронный журнал ведётся сам. Для бумажного — готовая вклейка за день.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.queue}</div>
+        <div class="k">Всего решений</div><div class="v tnum">${S.log.length}</div><div class="d">за смену</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Разрешено</div><div class="v tnum">${a}</div><div class="d">в составе групп: ${grp}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Не допущено</div><div class="v tnum">${d}</div><div class="d">акты сформированы</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.scissors}</div>
+        <div class="k">С изъятием</div><div class="v tnum">${p}</div><div class="d">вымарано и пропущено</div></div>
+    </div>
+
+    <div class="cards3">
+      <div class="card">
+        <h3>Вклейка в бумажный журнал</h3>
+        <div class="top-sub">Лист А4 с записями за день в том же порядке, что и в журнале.</div>
+        <div style="margin-top:14px"><button class="btn primary" onclick="openGlue()">Подготовить лист</button></div>
+      </div>
+      <div class="card">
+        <h3>Реестр актов об изъятии</h3>
+        <div class="top-sub">Акты по недопущенным материалам. Формируются автоматически.</div>
+        <div style="margin-top:14px"><button class="btn" onclick="openActs()">Открыть реестр · ${d}</button></div>
+      </div>
+      <div class="card">
+        <h3>Суточный отчёт</h3>
+        <div class="top-sub">Итоги смены для начальника учреждения.</div>
+        <div style="margin-top:14px"><button class="btn" onclick="openDayReport()">Сформировать</button></div>
+      </div>
+    </div>
+
+    <h2 class="sect">Журнал решений</h2>
+    ${S.log.length
+      ? `<div class="log">${S.log.slice(0, 200).map(entryHTML).join('')}</div>
+         ${S.log.length > 200 ? `<div class="more"><span class="chip">показаны последние 200 из ${S.log.length}</span></div>` : ''}`
+      : `<div class="empty"><div class="big">${ICON.clock}</div><b>Журнал пуст</b><div>Решения появятся здесь сразу после разбора ленты.</div></div>`}
+  `;
+}
+
+function openGlue(){
+  const rows = S.log.slice(0, 40);
+  if (!rows.length) { toast('За смену ещё нет решений'); return; }
+  modal(`
+    <div class="mh"><div><h3>Лист для вклейки</h3>
+      <div class="top-sub">28.08.2026 · ИК-5 · цензор Соколова Е.С. · записей: ${S.log.length}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="glue">
+        <div class="glue-head"><span>№</span><span>Отправитель → Получатель</span><span>Решение</span><span>Основание</span></div>
+        ${rows.map(e => `<div class="glue-row">
+          <span>${esc(e.id)}</span>
+          <span>${esc(e.from)} → ${esc(e.to)}</span>
+          <span>${e.decision === 'allow' ? 'разрешено' : e.decision === 'deny' ? 'не допущено' : 'с изъятием'}</span>
+          <span>${esc(e.basis)}</span></div>`).join('')}
+        ${S.log.length > 40 ? `<div class="top-sub" style="padding:10px 0">…и ещё ${S.log.length - 40} записей на следующих листах</div>` : ''}
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="doPrint()">Печать</button>
+    </div>`);
+}
+
+function openActs(){
+  const acts = S.log.filter(e => e.decision === 'deny');
+  modal(`
+    <div class="mh"><div><h3>Реестр актов об изъятии</h3>
+      <div class="top-sub">Актов: ${acts.length}. Формируются автоматически при недопуске.</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">${acts.length
+      ? `<div class="clist">${acts.slice(0, 60).map(e => `
+          <div class="citem"><div>
+            <div class="w">${esc(e.from)} → ${esc(e.to)}</div>
+            <div class="s">${esc(e.id)} · ${esc(e.at)} · ${esc(e.basis)}</div>
+          </div><button class="btn sm" onclick="doPrint()">Печать акта</button></div>`).join('')}</div>`
+      : '<div class="top-sub">Недопущенных материалов за смену нет.</div>'}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
+      ${acts.length ? '<button class="btn primary" onclick="doPrint()">Печать всех</button>' : ''}</div>`);
+}
+
+function openDayReport(){
+  const done = S.queue.filter(x => x.status !== 'queue').length;
+  const auto = autoCount();
+  modal(`
+    <div class="mh"><div><h3>Суточный отчёт</h3>
+      <div class="top-sub">28.08.2026 · ИК-5 · смена 08:00–20:00</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">Поступило</div><div>${S.total} материалов</div>
+        <div class="k">Разобрано</div><div>${done}</div>
+        <div class="k">Без открытия карточки</div><div>${auto}${done ? ' (' + Math.round(auto / done * 100) + '%)' : ''}</div>
+        <div class="k">Не допущено</div><div>${S.log.filter(e => e.decision === 'deny').length}</div>
+        <div class="k">С изъятием фрагментов</div><div>${S.log.filter(e => e.decision === 'partial').length}</div>
+        <div class="k">Сэкономлено времени</div><div>${savedText()}</div>
+      </div>
+      <div class="note ok" style="margin-top:16px">Отчёт уходит начальнику учреждения. Отдельно готовить ничего не нужно.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="closeModal(); toast('Суточный отчёт отправлен начальнику учреждения')">Отправить</button></div>`);
+}
+
+/* ---------------- Канал ОСНОВЫ ---------------- */
+
+function renderChannel(){
+  const list = [...REF.channel].sort((x, y) => (y.pinned ? 1 : 0) - (x.pinned ? 1 : 0));
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Канал ОСНОВЫ</h1>
+      <p>Сообщения от руководства учреждения и службы сопровождения.</p></div>
+    ${list.map(m => `
+      <div class="card" style="margin-bottom:10px; ${m.pinned ? 'border-color:var(--primary)' : ''}">
+        <div style="display:flex; justify-content:space-between; gap:14px; align-items:baseline; flex-wrap:wrap">
+          <div style="font-weight:650; font-size:16px">${esc(m.title)}</div>
+          ${m.pinned ? '<span class="chip a">закреплено</span>' : ''}
+        </div>
+        <div class="top-sub" style="margin-top:4px">${esc(m.from)} · ${esc(m.role)} · ${esc(m.at)}</div>
+        <div style="margin-top:12px; line-height:1.7">${esc(m.text)}</div>
+      </div>`).join('')}
+  `;
+}
+
+/* ---------------- Нормативные акты ---------------- */
+
+function renderLegal(){
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Нормативные акты</h1>
+      <p>Документы, на которые ссылается анализатор в основаниях решений.</p></div>
+    ${REF.legal.map(a => `
+      <div class="card" style="margin-bottom:12px">
+        <h3>${esc(a.title)}</h3>
+        <div class="top-sub">${esc(a.doc)} · ${esc(a.version)}</div>
+        <div style="margin:12px 0; color:var(--muted)">${esc(a.meaning)}</div>
+        <div class="kv">${a.sections.map(([n, t]) => `<div class="k">${esc(n)}</div><div>${esc(t)}</div>`).join('')}</div>
+        <div style="margin-top:16px"><a class="btn sm" href="${esc(a.url)}" target="_blank" rel="noopener">Открыть полный текст</a></div>
+      </div>`).join('')}
+  `;
+}
+
+/* ---------------- Поддержка ---------------- */
+
+function renderSupport(){
+  const s = REF.support;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Поддержка</h1><p>Если что-то не работает или анализатор ошибся.</p></div>
+    <div class="cards3">
+      <div class="card"><h3>Телефон</h3><div style="font-size:19px; font-weight:650; margin:6px 0">${esc(s.phone)}</div>
+        <div class="top-sub">${esc(s.hours)}</div></div>
+      <div class="card"><h3>Почта</h3><div style="font-size:17px; font-weight:650; margin:6px 0">${esc(s.email)}</div>
+        <div class="top-sub">Ответ в течение рабочего дня</div></div>
+      <div class="card"><h3>Написать сейчас</h3><div class="top-sub">Опишите, что случилось — мы ответим в канал ОСНОВЫ.</div>
+        <div style="margin-top:14px"><button class="btn primary" onclick="openSupportForm()">Написать</button></div></div>
+    </div>
+    <h2 class="sect">Частые вопросы</h2>
+    ${(s.topics || []).map(([q, aa]) => `
+      <div class="card" style="margin-bottom:10px">
+        <div style="font-weight:650; margin-bottom:5px">${esc(q)}</div>
+        <div style="color:var(--muted)">${esc(aa)}</div>
+      </div>`).join('')}
+  `;
+}
+function openSupportForm(){
+  modal(`
+    <div class="mh"><h3>Обращение в поддержку</h3><button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <label class="fld">Тема<input id="supTopic" placeholder="Например: анализатор ошибся в материале ОБ-4821"></label>
+      <label class="fld">Что произошло<textarea id="supText" placeholder="Опишите своими словами"></textarea></label>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="closeModal(); toast('Обращение отправлено. Ответ придёт в канал ОСНОВЫ.')">Отправить</button></div>`);
+}
+
+/* ---------------- Печать и контекст ---------------- */
+
+function doPrint(){
+  try { window.print(); } catch (e) { /* в некоторых окружениях печать недоступна */ }
+  closeModal();
+  toast('Отправлено на принтер учреждения');
+}
+
+function openPrint(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const тело = x.text ? esc(x.text)
+    : (x.ts || []).map(([t, s]) => t + '  ' + s).join('\n');
+  modal(`
+    <div class="mh"><div><h3>Предпросмотр печати</h3>
+      <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${x.id}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="print-sheet">
+        <div class="print-head">ИК-5 · материал ${esc(x.id)} · ${esc(x.at)}</div>
+        <div><b>От:</b> ${esc(x.from)}<br><b>Кому:</b> ${esc(x.to)}<br>
+             <b>Канал:</b> ${esc(x.channel)} · ${esc(x.lang)}</div>
+        <div class="print-body">${тело.replace(/\n/g, '<br>')}</div>
+        ${x.tr ? `<div class="print-body"><b>Перевод:</b><br>${esc(x.tr)}</div>` : ''}
+        <div class="print-foot">Основание: ${esc(x.basis)}</div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="doPrint()">Печать</button></div>`);
+}
+
+function openContext(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const related = S.queue.filter(z => z.id !== id && (z.from === x.from || z.to === x.to) && !z.protected).slice(0, 8);
+  modal(`
+    <div class="mh"><div><h3>Контекст переписки</h3>
+      <div class="top-sub">${esc(x.from)} → ${esc(x.to)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note">Переписка с защитником в контекст не включается — её содержание не раскрывается.</div>
+      ${related.length ? `<div class="clist" style="margin-top:14px">${related.map(z => `
+        <div class="citem"><div>
+          <div class="w"><span class="chip ${RISK_LETTER[z.risk]}">${RISK_ONE[z.risk]}</span> ${esc(z.from)} → ${esc(z.to)}</div>
+          <div class="s">${z.id} · ${z.at} · ${esc(z.sum)}</div>
+        </div><button class="btn sm" onclick="closeModal(); openCard('${z.id}')">Открыть</button></div>`).join('')}</div>`
+        : '<div class="top-sub" style="margin-top:14px">Других материалов этих людей за смену нет.</div>'}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+}
+
+/* ---------------- Бумажный путь ---------------- */
+
+const PAPER_LABEL = { mixed: 'смешанный', all: 'всё на печать', none: 'только экран' };
+function openPaperMode(){
+  modal(`
+    <div class="mh"><div><h3>Бумажный путь</h3>
+      <div class="top-sub">Как материалы попадают к вам: на экран, на бумагу или и так, и так.</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${Object.keys(PAPER_LABEL).map(k => `
+        <label class="opt ${S.paper === k ? 'on' : ''}" onclick="setPaper('${k}')">
+          <b>${PAPER_LABEL[k]}</b>
+          <span>${k === 'mixed' ? 'Разбор на экране, печать по необходимости. Так быстрее всего.'
+                 : k === 'all' ? 'Каждый материал печатается, как сегодня. Привычно, но медленно.'
+                 : 'Без печати совсем. Подходит, когда бумажный журнал ведёт другой сотрудник.'}</span>
+        </label>`).join('')}
+      <div class="note" style="margin-top:14px">Режим влияет только на то, что печатается автоматически. Напечатать отдельный материал можно в любом режиме.</div>
+    </div>
+    <div class="mf"><button class="btn primary" onclick="closeModal()">Готово</button></div>`);
+}
+function setPaper(k){ S.paper = k; closeModal(); render(); toast('Бумажный путь: ' + PAPER_LABEL[k]); }
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
-  const T = {queue:['Лента цензуры','Пятница, 28 августа 2026 · смена 08:00–20:00'],
-             card:['Материал на проверке','Решение принимает цензор'],
-             redact:['Вымарывание фрагмента','Изъятие части текста с сохранением остального'],
-             log:['Журнал решений','Все решения смены, по одному на материал']}[S.view];
+  const T = {
+    queue:       ['Лента цензуры', 'Пятница, 28 августа 2026 · смена 08:00–20:00'],
+    card:        ['Материал на проверке', 'Решение принимает цензор'],
+    redact:      ['Вымарывание фрагмента', 'Изъятие части текста с сохранением остального'],
+    assignments: ['Мои поручения', 'Задания от руководства и системы'],
+    archive:     ['Архив решений', 'Решённое за смену, с возможностью пересмотра'],
+    reports:     ['Журналы и отчёты', 'Электронный журнал и бумажный дубль'],
+    channel:     ['Канал ОСНОВЫ', 'Сообщения от руководства и службы сопровождения'],
+    legal:       ['Нормативные акты', 'Документы, на которые ссылаются основания'],
+    support:     ['Поддержка', 'Если что-то не работает'],
+  }[S.view];
   document.getElementById('topTitle').textContent = T[0];
   document.getElementById('topSub').textContent = T[1];
-  ({queue:renderQueue, card:renderCard, redact:renderRedact, log:renderLog})[S.view]();
+  ({ queue:renderQueue, card:renderCard, redact:renderRedact,
+     assignments:renderAssignments, archive:renderArchive, reports:renderReports,
+     channel:renderChannel, legal:renderLegal, support:renderSupport })[S.view]();
   window.scrollTo({top:0});
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal() });
