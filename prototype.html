@@ -1,0 +1,870 @@
+<title>ОСНОВА · Лента цензуры</title>
+<style>
+/* =====================================================================
+   ZT Light UI — десктопная визуальная система
+   Токены взяты из design_tokens.json скилла zt-light-ui-desktop-prototype.
+   Только светлая тема. Шрифты системные, без загрузки извне.
+   ===================================================================== */
+:root{
+  --primary:#6F3DFF; --primary-hover:#5E2FE8; --secondary:#A78BFA;
+  --lilac:#EDE9FE; --mint:#10B981; --soft-mint:#E0F7F1;
+  --soft-blue:#DBEAFE; --soft-pink:#FCE7F3; --soft-beige:#FDECD8;
+  --bg:#FAFAFC; --surface:#FFFFFF; --text:#1F2937; --muted:#6B7280;
+  --border:#E5E7EB; --border-soft:#F1F2F5;
+  --danger:#DC2626; --warning:#D97706; --success:#059669;
+  --r-card:18px; --r-btn:13px; --r-input:11px;
+  --shadow:0 1px 2px rgba(31,41,55,.04), 0 4px 16px rgba(31,41,55,.05);
+  --shadow-lift:0 4px 10px rgba(31,41,55,.06), 0 12px 32px rgba(111,61,255,.09);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Inter,Arial,Helvetica,sans-serif; font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea,select{font:inherit; color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary); outline-offset:2px; border-radius:8px}
+.tnum{font-variant-numeric:tabular-nums}
+svg{flex:none}
+
+/* ---------- каркас ---------- */
+.app{display:grid; grid-template-columns:232px 1fr; min-height:100%}
+
+.sidebar{
+  background:var(--surface); border-right:1px solid var(--border);
+  padding:20px 14px 16px; display:flex; flex-direction:column; gap:4px;
+  position:sticky; top:env(safe-area-inset-top,0px); height:100vh;
+}
+.brand{display:flex; align-items:center; gap:10px; padding:2px 8px 22px}
+.brand img{height:26px; width:auto; display:block}
+.brand-name{font-size:17px; font-weight:700; letter-spacing:.2px}
+.brand-sub{font-size:12px; color:var(--muted); margin-top:1px}
+
+.rolebox{
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:12px; padding:10px 12px; margin-bottom:16px;
+}
+.rolebox .lab{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-weight:600}
+.rolebox .val{font-weight:650; margin-top:2px; font-size:15px}
+
+.nav{display:flex; flex-direction:column; gap:3px}
+.nav button{
+  display:flex; align-items:center; gap:11px; width:100%;
+  background:transparent; border:0; color:var(--muted); text-align:left;
+  padding:10px 12px; border-radius:11px; font-size:15px; font-weight:550;
+  transition:background .12s, color .12s;
+}
+.nav button:hover{background:var(--bg); color:var(--text)}
+.nav button.active{background:var(--lilac); color:var(--primary); font-weight:650}
+.nav button.active .ico{color:var(--primary)}
+.nav .ico{display:grid; place-items:center; width:20px; height:20px; color:var(--muted)}
+.nav .badge{margin-left:auto; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums}
+.nav button.active .badge{color:var(--primary)}
+.side-foot{margin-top:auto; padding:14px 10px 0; border-top:1px solid var(--border); color:var(--muted); font-size:12px; line-height:1.5}
+
+.main{min-width:0; display:flex; flex-direction:column}
+.topbar{
+  height:68px; background:var(--surface); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:0 28px; position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+}
+.top-title{font-size:17px; font-weight:650}
+.top-sub{color:var(--muted); font-size:13px}
+.top-right{display:flex; align-items:center; gap:12px}
+.ctx{
+  display:flex; align-items:center; gap:8px; background:var(--bg);
+  border:1px solid var(--border); border-radius:10px; padding:7px 12px;
+  font-size:13.5px; color:var(--muted);
+}
+.ctx b{color:var(--text); font-weight:600}
+.user{display:flex; align-items:center; gap:10px; padding-left:14px; border-left:1px solid var(--border)}
+.avatar{width:36px; height:36px; border-radius:11px; background:var(--lilac); color:var(--primary);
+  display:grid; place-items:center; font-weight:700; font-size:13px}
+.user .nm{font-weight:650; font-size:14px}
+
+.content{padding:26px 28px 64px; max-width:1520px; width:100%}
+.page-head{margin-bottom:22px}
+.page-head h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.5px}
+.page-head p{margin:5px 0 0; color:var(--muted); font-size:15px}
+
+/* ---------- показатели ---------- */
+.stats{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:22px}
+.stat{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card); padding:18px 20px}
+.stat .badge-ico{width:34px; height:34px; border-radius:10px; display:grid; place-items:center; margin-bottom:12px}
+.stat .k{font-size:13px; color:var(--muted); margin-bottom:6px}
+.stat .v{font-size:27px; font-weight:700; letter-spacing:-.6px; line-height:1.1}
+.stat .d{font-size:13px; color:var(--muted); margin-top:5px}
+
+/* ---------- панели управления ---------- */
+.bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px}
+.bar .lab{font-size:13.5px; color:var(--muted); font-weight:550}
+.seg{display:inline-flex; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:4px; gap:4px}
+.seg button{border:0; background:transparent; padding:8px 14px; border-radius:9px;
+  font-size:14px; font-weight:600; color:var(--muted); transition:background .12s, color .12s}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--primary); color:#fff}
+
+.tabs{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px}
+.tab{
+  display:flex; align-items:center; gap:11px; background:var(--surface);
+  border:1px solid var(--border); border-radius:14px; padding:13px 18px;
+  font-weight:600; font-size:15px; color:var(--muted); transition:border-color .12s, box-shadow .12s;
+}
+.tab:hover{border-color:var(--secondary)}
+.tab .dot{width:9px; height:9px; border-radius:50%; flex:none}
+.tab .n{font-size:20px; font-weight:700; color:var(--text); letter-spacing:-.3px; margin-right:2px}
+.tab.on{border-color:var(--primary); background:var(--lilac); color:var(--primary)}
+.tab.on .n{color:var(--primary)}
+.tab.g .dot{background:var(--success)} .tab.o .dot{background:var(--warning)} .tab.r .dot{background:var(--danger)}
+
+/* ---------- кнопки ---------- */
+.btn{
+  display:inline-flex; align-items:center; gap:8px; justify-content:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  border-radius:var(--r-btn); padding:11px 18px; font-weight:600; font-size:14.5px;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.btn:hover{background:var(--bg); border-color:var(--secondary)}
+.btn.primary{background:var(--primary); border-color:var(--primary); color:#fff}
+.btn.primary:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+.btn.danger{background:var(--surface); border-color:var(--border); color:var(--danger)}
+.btn.danger:hover{background:#FEF2F2; border-color:#FCA5A5}
+.btn.ghost{background:transparent; border-color:transparent; color:var(--primary)}
+.btn.ghost:hover{background:var(--lilac)}
+.btn.sm{padding:8px 13px; font-size:13.5px; border-radius:10px}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+
+.actionbar{
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:16px 20px; margin-bottom:14px;
+}
+.actionbar .txt{font-size:14.5px; color:var(--muted); max-width:640px}
+.actionbar .txt b{color:var(--text); font-weight:650}
+
+/* ---------- метки ---------- */
+.chip{
+  display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border);
+  background:var(--bg); border-radius:999px; padding:4px 11px; font-size:12.5px;
+  color:var(--muted); white-space:nowrap; font-weight:550;
+}
+.chip.g{background:var(--soft-mint); border-color:#BFE9DC; color:var(--success)}
+.chip.o{background:var(--soft-beige); border-color:#F3D5AC; color:var(--warning)}
+.chip.r{background:var(--soft-pink); border-color:#F6C6DC; color:var(--danger)}
+.chip.a{background:var(--lilac); border-color:#D6CCFB; color:var(--primary)}
+
+/* ---------- очередь ---------- */
+.rows{display:flex; flex-direction:column; gap:10px}
+.row{
+  display:grid; grid-template-columns:4px 1.15fr 1.35fr auto; gap:18px; align-items:start;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:16px 18px; transition:border-color .12s, box-shadow .12s;
+}
+.row:hover{border-color:var(--secondary); box-shadow:var(--shadow)}
+.stripe{border-radius:3px; align-self:stretch; min-height:48px; background:var(--border)}
+.stripe.g{background:var(--success)} .stripe.o{background:var(--warning)} .stripe.r{background:var(--danger)}
+.row .who{font-weight:650; margin-bottom:4px; font-size:15px}
+.row .meta{color:var(--muted); font-size:13px}
+.row .marks{display:flex; gap:6px; flex-wrap:wrap; margin-top:9px}
+.row .sum{font-weight:600; margin-bottom:4px; font-size:14.5px}
+.row .why{color:var(--muted); font-size:13.5px}
+.row .acts{display:flex; gap:8px; align-items:center}
+.link{background:none; border:0; color:var(--primary); font-size:13.5px; font-weight:600; padding:0 0 0 6px}
+.link:hover{text-decoration:underline; text-underline-offset:2px}
+.fold{display:none; margin-top:10px; padding:12px 14px; background:var(--bg);
+  border:1px solid var(--border-soft); border-radius:12px; font-size:13.5px; color:var(--muted)}
+.fold.open{display:block}
+.more{display:flex; justify-content:center; padding:18px 0 0}
+
+/* ---------- выноски ---------- */
+.note{
+  border:1px solid var(--border); border-left:3px solid var(--primary); background:var(--surface);
+  border-radius:0 14px 14px 0; padding:14px 18px; font-size:14.5px; margin:14px 0;
+}
+.note.warn{border-color:#F3D5AC; border-left-color:var(--warning); background:var(--soft-beige); color:#8A5A0B}
+.note.ok{border-color:#BFE9DC; border-left-color:var(--success); background:var(--soft-mint); color:#0A6B4F}
+.note b{font-weight:650}
+
+.empty{text-align:center; padding:56px 20px; color:var(--muted);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card)}
+.empty .big{width:52px; height:52px; margin:0 auto 14px; border-radius:15px;
+  background:var(--soft-mint); color:var(--success); display:grid; place-items:center}
+.empty b{display:block; color:var(--text); font-size:17px; margin-bottom:5px}
+
+/* ---------- карточка материала ---------- */
+.card{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:22px 24px; margin-bottom:14px}
+.card h3{margin:0 0 14px; font-size:16px; font-weight:650}
+.split{display:grid; grid-template-columns:1.5fr 1fr; gap:14px; align-items:start}
+.body-text{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
+  padding:18px 20px; line-height:1.8; font-size:15.5px}
+mark{background:var(--soft-beige); color:#8A5A0B; border-bottom:2px solid var(--warning);
+  padding:1px 3px; border-radius:4px}
+mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var(--danger)}
+.ts{display:grid; grid-template-columns:64px 1fr; gap:8px 14px; font-size:15px}
+.ts .t{color:var(--muted); font-size:13px; padding-top:2px; font-variant-numeric:tabular-nums}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:9px 16px; font-size:14px}
+.kv .k{color:var(--muted)}
+.progress{display:flex; align-items:center; gap:12px; font-size:13.5px; color:var(--muted); margin-bottom:14px}
+.pbar{flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; max-width:280px}
+.pbar i{display:block; height:100%; background:var(--primary); border-radius:3px}
+
+/* ---------- вымарывание ---------- */
+.redact{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
+  padding:18px 20px; line-height:2.1; font-size:15.5px}
+.frag{border-radius:6px; padding:2px 4px; cursor:pointer; border-bottom:1px dashed var(--border);
+  transition:background .1s}
+.frag:hover{background:var(--lilac)}
+.frag.cut{background:var(--text); color:var(--text); border-bottom-color:transparent}
+.preview{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
+  padding:18px 20px; line-height:1.95; font-size:15.5px}
+.blk{background:var(--text); border-radius:4px; color:transparent; user-select:none}
+
+/* ---------- журнал ---------- */
+.log{display:flex; flex-direction:column; gap:10px}
+.entry{background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--border);
+  border-radius:0 14px 14px 0; padding:14px 18px}
+.entry.allow{border-left-color:var(--success)}
+.entry.deny{border-left-color:var(--danger)}
+.entry.part{border-left-color:var(--warning)}
+.entry .h{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; font-weight:650; font-size:14.5px}
+.entry .id{color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; font-weight:500}
+.entry .l{color:var(--muted); font-size:13.5px; margin-top:4px}
+
+/* ---------- модальное окно ---------- */
+.back{position:fixed; inset:0; background:rgba(31,41,55,.42); display:grid; place-items:center;
+  padding:24px; z-index:60; backdrop-filter:blur(2px)}
+.modal{background:var(--surface); border:1px solid var(--border); border-radius:20px;
+  width:min(760px,100%); max-height:86vh; display:flex; flex-direction:column;
+  box-shadow:0 24px 64px rgba(31,41,55,.22)}
+.mh{display:flex; justify-content:space-between; align-items:flex-start; gap:14px;
+  padding:22px 24px 18px; border-bottom:1px solid var(--border)}
+.mh h3{margin:0; font-size:19px; font-weight:700}
+.mb{padding:20px 24px; overflow:auto}
+.mf{padding:16px 24px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap}
+.x{background:none; border:0; color:var(--muted); font-size:22px; line-height:1; padding:2px 8px; border-radius:8px}
+.x:hover{background:var(--bg); color:var(--text)}
+.clist{display:flex; flex-direction:column; gap:8px}
+.citem{display:grid; grid-template-columns:1fr auto; gap:14px; align-items:start;
+  border:1px solid var(--border); border-radius:13px; padding:12px 14px; background:var(--surface)}
+.citem .w{font-weight:650; font-size:14px}
+.citem .s{color:var(--muted); font-size:13px; margin-top:2px}
+.citem textarea{
+  width:100%; margin-top:9px; border:1px solid var(--border); border-radius:var(--r-input);
+  padding:9px 12px; font-size:13.5px; background:var(--surface); color:var(--text);
+  resize:vertical; min-height:56px; line-height:1.5;
+}
+.citem textarea:focus{outline:0; border-color:var(--primary); box-shadow:0 0 0 3px rgba(111,61,255,.14)}
+
+.toast{position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
+  background:var(--text); color:#fff; padding:13px 22px; border-radius:13px; font-size:14px;
+  box-shadow:0 12px 32px rgba(31,41,55,.28); z-index:90; max-width:calc(100% - 48px)}
+
+/* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
+@media (max-width:1180px){
+  .split{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1000px){
+  .app{grid-template-columns:72px 1fr}
+  .brand{justify-content:center; padding:2px 0 18px}
+  .brand-text, .rolebox, .side-foot{display:none}
+  .nav button{justify-content:center; padding:11px 0}
+  .nav button span:not(.ico){display:none}
+  .row{grid-template-columns:4px 1fr; gap:12px}
+  .row .acts{grid-column:2}
+  .content{padding:20px 18px 56px}
+  .topbar{padding:0 18px}
+  .ctx{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkxIiBoZWlnaHQ9IjY0IiB2aWV3Qm94PSIwIDAgMTkxIDY0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNNDQuNDI0MSA3LjExMzI0QzQxLjM0NjEgNC4xOTk3OCAzOS4xNjQzIDIuNTM0MiAzNi43NjU2IDEuNzU0NzlDMzMuNjY4MiAwLjc0ODQwMiAzMC4zMzE4IDAuNzQ4NDAzIDI3LjIzNDQgMS43NTQ3OUMyMy43MTMyIDIuODk4OSAyMC42NTk2IDUuOTUyNTMgMTQuNTUyMyAxMi4wNTk4TDEyLjA1OTggMTQuNTUyM0M1Ljk1MjUzIDIwLjY1OTYgMi44OTg5IDIzLjcxMzIgMS43NTQ3OSAyNy4yMzQ0QzAuNzQ4NDAyIDMwLjMzMTggMC43NDg0MDMgMzMuNjY4MiAxLjc1NDc5IDM2Ljc2NTZDMi44OTg5IDQwLjI4NjggNS45NTI1MyA0My4zNDA0IDEyLjA1OTggNDkuNDQ3N0wxNC41NTIzIDUxLjk0MDJDMjAuNjU5NiA1OC4wNDc1IDIzLjcxMzIgNjEuMTAxMSAyNy4yMzQ0IDYyLjI0NTJDMzAuMzMxOCA2My4yNTE2IDMzLjY2ODIgNjMuMjUxNiAzNi43NjU2IDYyLjI0NTJDNDAuMjg2OCA2MS4xMDExIDQzLjM0MDQgNTguMDQ3NSA0OS40NDc3IDUxLjk0MDJMNTEuOTQwMiA0OS40NDc3QzU4LjA0NzUgNDMuMzQwNCA2MS4xMDExIDQwLjI4NjggNjIuMjQ1MiAzNi43NjU2QzYzLjI1MTYgMzMuNjY4MiA2My4yNTE2IDMwLjMzMTggNjIuMjQ1MiAyNy4yMzQ0QzYxLjQ2NTggMjQuODM1NyA1OS44MDAyIDIyLjY1MzkgNTYuODg2OCAxOS41NzU5TDQ3LjU3OSAyOC44ODM2TDQ4LjIwMjIgMjkuNTA2N0M0OS4wNzQ2IDMwLjM3OTIgNDkuNTEwOSAzMC44MTU0IDQ5LjY3NDMgMzEuMzE4NEM0OS44MTgxIDMxLjc2MDkgNDkuODE4MSAzMi4yMzc2IDQ5LjY3NDMgMzIuNjhDNDkuNTEwOSAzMy4xODMxIDQ5LjA3NDYgMzMuNjE5MyA0OC4yMDIyIDM0LjQ5MThMMzQuNDkzMyA0OC4yMDA3QzMzLjYyMDggNDkuMDczMSAzMy4xODQ2IDQ5LjUwOTQgMzIuNjgxNiA0OS42NzI4QzMyLjIzOTEgNDkuODE2NiAzMS43NjI0IDQ5LjgxNjYgMzEuMzIgNDkuNjcyOEMzMC44MTY5IDQ5LjUwOTQgMzAuMzgwNyA0OS4wNzMxIDI5LjUwODIgNDguMjAwN0wxNS43OTkzIDM0LjQ5MThDMTQuOTI2OSAzMy42MTkzIDE0LjQ5MDYgMzMuMTgzMSAxNC4zMjcyIDMyLjY4QzE0LjE4MzQgMzIuMjM3NiAxNC4xODM0IDMxLjc2MDkgMTQuMzI3MiAzMS4zMTg0QzE0LjQ5MDYgMzAuODE1NCAxNC45MjY5IDMwLjM3OTIgMTUuNzk5MyAyOS41MDY3TDI5LjUwODIgMTUuNzk3OEMzMC4zODA3IDE0LjkyNTQgMzAuODE2OSAxNC40ODkxIDMxLjMyIDE0LjMyNTdDMzEuNzYyNCAxNC4xODE5IDMyLjIzOTEgMTQuMTgxOSAzMi42ODE2IDE0LjMyNTdDMzMuMTg0NiAxNC40ODkxIDMzLjYyMDggMTQuOTI1NCAzNC40OTMzIDE1Ljc5NzhMMzUuMTE2NCAxNi40MjFMNDQuNDI0MSA3LjExMzI0WiIgZmlsbD0iIzAwQkY3RiIvPgo8cGF0aCBkPSJNNzcuNDQ3NyA1MS45NDAyQzcxLjM0MDQgNTguMDQ3NSA2OC4yODY4IDYxLjEwMTEgNjQuNzY1NiA2Mi4yNDUyQzYxLjY2ODIgNjMuMjUxNiA1OC4zMzE4IDYzLjI1MTYgNTUuMjM0NCA2Mi4yNDUyQzUyLjgzNTYgNjEuNDY1OCA1MC42NTM5IDU5LjgwMDIgNDcuNTc1OSA1Ni44ODY4TDU2Ljg4MzYgNDcuNTc5TDU3LjUwNjcgNDguMjAyMkM1OC4zNzkyIDQ5LjA3NDYgNTguODE1NCA0OS41MTA5IDU5LjMxODQgNDkuNjc0M0M1OS43NjA5IDQ5LjgxODEgNjAuMjM3NiA0OS44MTgxIDYwLjY4IDQ5LjY3NDNDNjEuMTgzMSA0OS41MTA5IDYxLjYxOTMgNDkuMDc0NiA2Mi40OTE4IDQ4LjIwMjJMNzYuMjAwNyAzNC40OTMzQzc3LjA3MzEgMzMuNjIwOCA3Ny41MDk0IDMzLjE4NDYgNzcuNjcyOCAzMi42ODE2Qzc3LjgxNjYgMzIuMjM5MSA3Ny44MTY2IDMxLjc2MjQgNzcuNjcyOCAzMS4zMkM3Ny41MDk0IDMwLjgxNjkgNzcuMDczMSAzMC4zODA3IDc2LjIwMDcgMjkuNTA4Mkw2Mi40OTE4IDE1Ljc5OTNDNjEuNjE5MyAxNC45MjY5IDYxLjE4MzEgMTQuNDkwNiA2MC42OCAxNC4zMjcyQzYwLjIzNzYgMTQuMTgzNCA1OS43NjA5IDE0LjE4MzQgNTkuMzE4NCAxNC4zMjcyQzU4LjgxNTQgMTQuNDkwNiA1OC4zNzkyIDE0LjkyNjkgNTcuNTA2NyAxNS43OTkzTDQzLjc5NzggMjkuNTA4MkM0Mi45MjU0IDMwLjM4MDcgNDIuNDg5MSAzMC44MTY5IDQyLjMyNTcgMzEuMzJDNDIuMTgxOSAzMS43NjI0IDQyLjE4MTkgMzIuMjM5MSA0Mi4zMjU3IDMyLjY4MTZDNDIuNDg5MSAzMy4xODQ2IDQyLjkyNTQgMzMuNjIwOCA0My43OTc4IDM0LjQ5MzNMNDQuNDIxIDM1LjExNjRMMzUuMTEzMiA0NC40MjQxQzMyLjE5OTggNDEuMzQ2MSAzMC41MzQyIDM5LjE2NDMgMjkuNzU0OCAzNi43NjU2QzI4Ljc0ODQgMzMuNjY4MiAyOC43NDg0IDMwLjMzMTggMjkuNzU0OCAyNy4yMzQ0QzMwLjg5ODkgMjMuNzEzMiAzMy45NTI1IDIwLjY1OTYgNDAuMDU5OCAxNC41NTIzTDQyLjU1MjMgMTIuMDU5OEM0OC42NTk2IDUuOTUyNTMgNTEuNzEzMiAyLjg5ODkgNTUuMjM0NCAxLjc1NDc5QzU4LjMzMTggMC43NDg0MDIgNjEuNjY4MiAwLjc0ODQwMyA2NC43NjU2IDEuNzU0NzlDNjguMjg2OCAyLjg5ODkgNzEuMzQwNCA1Ljk1MjUzIDc3LjQ0NzcgMTIuMDU5OEw3OS45NDAyIDE0LjU1MjNDODYuMDQ3NSAyMC42NTk2IDg5LjEwMTEgMjMuNzEzMiA5MC4yNDUyIDI3LjIzNDRDOTEuMjUxNiAzMC4zMzE4IDkxLjI1MTYgMzMuNjY4MiA5MC4yNDUyIDM2Ljc2NTZDODkuMTAxMSA0MC4yODY4IDg2LjA0NzUgNDMuMzQwNCA3OS45NDAyIDQ5LjQ0NzdMNzcuNDQ3NyA1MS45NDAyWiIgZmlsbD0iIzY3M0RDQyIvPgo8cGF0aCBkPSJNMTQ0IDEyLjUwMjJDMTQ0IDEzLjY0NjcgMTQzLjUxNyAxNC42NDgyIDE0Mi45NzcgMTUuNjI1MUMxNDIuNTA5IDE2LjQ3MTEgMTQxLjc3MSAxNy42NjUzIDE0MC41OTkgMTkuMzA1M0MxMzguMjYxIDIyLjU3OSAxMzQuMTIxIDI3LjczNTUgMTI2Ljc4NiAzNS41NzY1QzEyMS42NTUgNDEuMDYxNyAxMTguMjg1IDQ1LjEwMjggMTE2IDQ4LjAwMjJIMTM4LjA1N0MxNDAuNTc5IDQ4LjAwMjIgMTQyLjQ1MiA1MC4zNzE5IDE0MS45MDUgNTIuODdMMTQxLjY4NiA1My44N0MxNDEuMjg1IDU1LjcwMDEgMTM5LjY4NiA1Ny4wMDIyIDEzNy44MzggNTcuMDAyMkgxMDcuNUMxMDUuMDE1IDU3LjAwMjIgMTAzIDU0Ljk4NzUgMTAzIDUyLjUwMjJDMTAzIDUxLjM1NzggMTAzLjQ4MyA1MC4zNTYzIDEwNC4wMjMgNDkuMzc5NEMxMDQuNDkxIDQ4LjUzMzQgMTA1LjIyOSA0Ny4zMzkyIDEwNi40MDEgNDUuNjk5MkMxMDguNzM5IDQyLjQyNTQgMTEyLjg3OSAzNy4yNjkgMTIwLjIxNCAyOS40MjhDMTI1LjM0NSAyMy45NDI4IDEyOC43MTUgMTkuOTAxNyAxMzEgMTcuMDAyMkgxMDguOTQzQzEwNi40MjEgMTcuMDAyMiAxMDQuNTQ4IDE0LjYzMjYgMTA1LjA5NSAxMi4xMzQ1TDEwNS4zMTQgMTEuMTM0NUMxMDUuNzE1IDkuMzA0MzcgMTA3LjMxNCA4LjAwMjI1IDEwOS4xNjIgOC4wMDIyNUgxMzkuNUMxNDEuOTg1IDguMDAyMjUgMTQ0IDEwLjAxNyAxNDQgMTIuNTAyMloiIGZpbGw9ImJsYWNrIi8+CjxwYXRoIGQ9Ik0xNTEuNDA1IDEwLjgwMzZDMTUxLjg5IDkuMjU1MDEgMTUzLjI2NiA4LjE1MzQ2IDE1NC44ODUgOC4wMTY1QzE1NS4wNTMgOC4wMDIyNSAxNTUuMjQ0IDguMDAyMjUgMTU1LjYyNCA4LjAwMjI1SDE4NS4zNzZDMTg1Ljk0MSA4LjAwMjI1IDE4Ni4yMjQgNy45ODcyOSAxODYuNDQ2IDguMDEyMjVDMTg4LjYzNCA4LjI1NzU0IDE5MC4yMTIgMTAuMjUwNyAxODkuOTc3IDEyLjQzNkMxODkuOTE0IDEzLjAyMTMgMTg5Ljc3MSAxMy42Mzg1IDE4OS41OTUgMTQuMjAwOUMxODkuMTEgMTUuNzQ5NSAxODcuNzM0IDE2Ljg1MSAxODYuMTE1IDE2Ljk4OEMxODUuOTQ3IDE3LjAwMjIgMTg1Ljc1NyAxNy4wMDIyIDE4NS4zNzYgMTcuMDAyMkgxNzVWNTIuNTAyMkMxNzUgNTIuOTY2NiAxNzUgNTMuMTk4OCAxNzQuOTgxIDUzLjM5NDNDMTc0Ljc5NCA1NS4yOTM0IDE3My4yOTEgNTYuNzk1OSAxNzEuMzkyIDU2Ljk4M0MxNzEuMTk3IDU3LjAwMjIgMTcwLjk2NCA1Ny4wMDIyIDE3MC41IDU3LjAwMjJDMTcwLjAzNiA1Ny4wMDIyIDE2OS44MDMgNTcuMDAyMiAxNjkuNjA4IDU2Ljk4M0MxNjcuNzA5IDU2Ljc5NTkgMTY2LjIwNiA1NS4yOTM0IDE2Ni4wMTkgNTMuMzk0M0MxNjYgNTMuMTk4OCAxNjYgNTIuOTY2NiAxNjYgNTIuNTAyMlYxNy4wMDIyTDE1NS42MjQgMTcuMDAyM0MxNTUuMDU5IDE3LjAwMjMgMTU0Ljc3NiAxNy4wMTcyIDE1NC41NTQgMTYuOTkyM0MxNTIuMzY2IDE2Ljc0NyAxNTAuNzg4IDE0Ljc1MzggMTUxLjAyMyAxMi41Njg1QzE1MS4wODYgMTEuOTgzMiAxNTEuMjI5IDExLjM2NiAxNTEuNDA1IDEwLjgwMzZaIiBmaWxsPSJibGFjayIvPgo8L3N2Zz4K" alt="ЗТ">
+      <div class="brand-text">
+        <div class="brand-name">ОСНОВА</div>
+        <div class="brand-sub">рабочий контур</div>
+      </div>
+    </div>
+    <div class="rolebox">
+      <div class="lab">Режим работы</div>
+      <div class="val">Цензор</div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">ИК-5 · Северный территориальный орган<br>смена 08:00–20:00</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="top-title" id="topTitle">Лента цензуры</div>
+        <div class="top-sub" id="topSub">Пятница, 28 августа 2026 · смена 08:00–20:00</div>
+      </div>
+      <div class="top-right">
+        <div class="ctx">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
+          <span>Учреждение: <b>ИК-5</b></span>
+        </div>
+        <div class="user">
+          <div class="avatar">ЕС</div>
+          <div>
+            <div class="nm">Елена Соколова</div>
+            <div class="top-sub">цензор</div>
+          </div>
+        </div>
+      </div>
+    </header>
+    <section class="content" id="content"></section>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="data-shift-normal.js"></script>
+<script src="data-shift-peak.js"></script>
+<script>
+/* =======================================================================
+   ДАННЫЕ
+
+   Прототип больше ничего не выдумывает. Набор приходит из модуля данных
+   (папка data) готовым файлом data-*.js, который подключён в начале страницы.
+
+   Внутри набора — тот же формат, что отдаёт источник по контракту
+   (data/contract.js). Ниже единственное место, где формат контракта
+   переводится в то, с чем работают экраны.
+
+   Когда появятся настоящие ручки ЗТ, набор будет приходить оттуда,
+   а этот переводчик останется прежним.
+   ======================================================================= */
+
+const SETS = {
+  'shift-normal': 'Обычный день · 200',
+  'shift-peak':   'Пиковый день · 500',
+};
+
+const CHANNEL_LABEL = { letter: 'письмо', voice: 'голосовое сообщение', video: 'видеосообщение' };
+const KIND_LABEL    = { text: 'Письмо', audio: 'Голосовое сообщение', video: 'Видеосообщение' };
+const DIR_LABEL     = { in: 'Входящее', out: 'Исходящее' };
+const ORIGIN_LABEL  = { digital: 'Цифровое', scanned: 'Отсканировано' };
+const LANG_LABEL    = { ru: 'Русский', uz: 'Узбекский', tg: 'Таджикский', kg: 'Киргизский' };
+
+const pad2 = n => String(n).padStart(2, '0');
+const hhmm = iso => { const d = new Date(iso); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const mmss = sec => `${pad2(Math.floor(sec / 60))}:${pad2(sec % 60)}`;
+
+/* Перевод материала из формата контракта в формат экранов. */
+function fromContract(m) {
+  const a = m.a;
+  const lang = LANG_LABEL[m.lang] || m.lang;
+  const translated = m.content && m.content.translation;
+
+  const ts = (m.content && m.content.transcript)
+    ? m.content.transcript.map(x => [mmss(x.t), x.s])
+    : null;
+
+  // какие реплики подсветить: те, что анализатор пометил
+  const hlts = ts
+    ? ts.map(([, s], i) => (a.hl || []).some(h => s.includes(h) || h.includes(s)) ? i : -1).filter(i => i >= 0)
+    : [];
+
+  return {
+    id: m.id,
+    risk: a.risk,
+    at: hhmm(m.at),
+    from: m.from.name,
+    to: m.to.name,
+    dir: DIR_LABEL[m.dir] || m.dir,
+    channel: CHANNEL_LABEL[m.channel] || m.channel,
+    kind: m.kind,
+    kindLabel: KIND_LABEL[m.kind] || m.kind,
+    size: m.size,
+    origin: ORIGIN_LABEL[m.origin] || m.origin,
+    lang: translated ? `${lang} → русский` : lang,
+    sum: a.sum,
+    why: a.why,
+    full: a.full,
+    basis: a.basis,
+    conf: a.conf,
+    checked: a.checked,
+    notFound: a.notFound,
+    rec: a.rec,
+    text: m.content ? m.content.text : null,
+    ts,
+    tr: translated || null,
+    frames: (m.content && m.content.frames) ? m.content.frames.map(x => [x.t, x.d]) : null,
+    hl: a.hl || [],
+    hlts,
+    sample: !!m.sample,
+    protected: !!(m.from.protected || m.to.protected),
+    prov: m.prov || [],
+    status: 'queue',
+  };
+}
+
+/* Загрузка набора. Файл data-*.js подключается тегом script и кладёт
+   набор в window.OSNOVA_DATA — поэтому работает и при открытии файла
+   двойным кликом, без всякого сервера. */
+function loadQueue(setName) {
+  const raw = (window.OSNOVA_SETS || {})[setName];
+  if (!raw || !Array.isArray(raw.materials)) {
+    document.getElementById('content').innerHTML =
+      '<div class="empty"><div class="big">!</div><b>Набор данных не подключён</b>' +
+      '<div>Рядом со страницей должен лежать файл <code>data-shift-peak.js</code>.<br>' +
+      'Собрать его: <code>node data/generate.js</code></div></div>';
+    return [];
+  }
+  RULES_TOTAL = (raw.rules || []).length;
+  return raw.materials.map(fromContract);
+}
+
+let RULES_TOTAL = 0;
+/* ---------------- состояние ---------------- */
+const S = {
+  view:'queue',
+  set:'shift-peak',
+  stack:'green',
+  trust:'full',              // full | half | manual
+  queue: [],
+  log: [],
+  openId: null,
+  conveyor: null,            // очередь id для разбора подряд
+  redactId: null,
+  redactCut: [],
+  shown: 30,                 // сколько строк показано в текущей стопке
+  total: 0
+};
+S.queue = loadQueue(S.set);
+S.total = S.queue.length;
+
+const TRUST_LABEL = {full:'Полное доверие', half:'Половинчатое', manual:'Ручной режим'};
+const RISK_NAME = {green:'Зелёные', orange:'Оранжевые', red:'Красные'};
+const RISK_ONE  = {green:'зелёный', orange:'оранжевый', red:'красный'};
+const RISK_LETTER = {green:'g', orange:'o', red:'r'};
+
+/* время, которое экономится на одном материале, прошедшем без открытия */
+const SAVED_PER_ITEM_SEC = 60;
+
+function left(risk){return S.queue.filter(x=>x.status==='queue' && x.risk===risk)}
+function leftAll(){return S.queue.filter(x=>x.status==='queue')}
+function decidedCount(){return S.queue.length - leftAll().length}
+function autoCount(){return S.log.filter(e=>e.group>1).length}
+function savedText(){
+  const sec = autoCount()*SAVED_PER_ITEM_SEC;
+  const h = Math.floor(sec/3600), m = Math.round((sec%3600)/60);
+  return h ? `${h} ч ${m} мин` : `${m} мин`;
+}
+/* можно ли для стопки групповое действие при текущем режиме доверия */
+function groupAllowed(risk){
+  if(S.trust==='manual') return false;
+  if(S.trust==='half') return risk==='green';
+  return true;
+}
+/* зелёные, попавшие в выборочный контроль, из пачки исключаются */
+function bulkSet(risk){
+  return left(risk).filter(x => !(risk==='green' && x.sample));
+}
+
+/* ---------------- утилиты вывода ---------------- */
+const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(msg){
+  const r=document.getElementById('toastRoot');
+  r.innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  clearTimeout(toast._t); toast._t=setTimeout(()=>r.innerHTML='',3400);
+}
+function modal(html){document.getElementById('modalRoot').innerHTML = `<div class="back" onclick="if(event.target===this)closeModal()"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`}
+function closeModal(){document.getElementById('modalRoot').innerHTML=''}
+function hlText(txt, hl){
+  let out = esc(txt);
+  (hl||[]).forEach(h=>{ out = out.replace(esc(h), m=>`<mark>${m}</mark>`) });
+  return out;
+}
+
+/* ---------------- навигация ---------------- */
+
+/* Аутлайновые иконки — требование скилла: inline SVG, одинаковая толщина линии */
+const SVG = (d, extra) => '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + (extra||'') + '</svg>';
+const ICON = {
+  queue: SVG('<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/>'),
+  log:   SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  check: SVG('<path d="M20 6L9 17l-5-5"/>'),
+  inbox: SVG('<path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14l2 7v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z"/>'),
+  clock: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  time:  SVG('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/>'),
+};
+
+const NAV = [
+  ['queue', ICON.queue, 'Лента цензуры'],
+  ['log', ICON.log, 'Журнал решений']
+];
+function renderNav(){
+  document.getElementById('nav').innerHTML = NAV.map(([v,i,t])=>{
+    const badge = v==='queue' ? `<span class="badge tnum">${leftAll().length}</span>`
+                : v==='log'   ? `<span class="badge tnum">${S.log.length}</span>` : '';
+    return `<button class="${S.view===v?'active':''}" onclick="go('${v}')"><span class="ico">${i}</span><span>${t}</span>${badge}</button>`;
+  }).join('');
+}
+function go(v){S.view=v; S.openId=null; S.conveyor=null; render()}
+
+/* ---------------- экран 1: лента ---------------- */
+function renderQueue(){
+  const g=left('green').length, o=left('orange').length, r=left('red').length;
+  const cur = left(S.stack);
+  const bulk = bulkSet(S.stack);
+  const samples = S.stack==='green' ? cur.filter(x=>x.sample).length : 0;
+
+  const actionText = {
+    green:['Разрешить все', 'Признаков нарушения не выявлено.'],
+    orange:['Разобрать подряд', 'Материалы откроются один за другим.'],
+    red:['Оформить недопуск пачкой', 'Мотивировка по каждому — на проверку.']
+  }[S.stack];
+
+  const allowed = groupAllowed(S.stack);
+  const reason = S.trust==='manual'
+    ? 'Ручной режим — только поштучно'
+    : 'Пачкой — только зелёные';
+
+  const page = cur.slice(0, S.shown);
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Лента цензуры</h1><p>Материалы за смену разложены по трём стопкам. Начните с зелёных.</p></div>
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div><div class="k">Поступило за смену</div><div class="v tnum">${S.total}</div><div class="d">материалов</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div><div class="k">Разобрано</div><div class="v tnum">${decidedCount()}</div><div class="d">осталось ${leftAll().length}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.queue}</div><div class="k">Без открытия карточки</div><div class="v tnum">${autoCount()}</div><div class="d">${decidedCount()? Math.round(autoCount()/decidedCount()*100):0}% от разобранного</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.time}</div><div class="k">Сэкономлено</div><div class="v">${savedText()}</div><div class="d">рабочего времени</div></div>
+    </div>
+
+    <div class="bar">
+      <span class="lab">День:</span>
+      <div class="seg">
+        ${Object.keys(SETS).map(k=>`<button class="${S.set===k?'on':''}" onclick="setSet('${k}')">${SETS[k]}</button>`).join('')}
+      </div>
+      <span class="lab" style="margin-left:12px">Режим доверия:</span>
+      <div class="seg">
+        ${['full','half','manual'].map(t=>`<button class="${S.trust===t?'on':''}" onclick="setTrust('${t}')">${TRUST_LABEL[t]}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="tabs">
+      ${['green','orange','red'].map(k=>`
+        <button class="tab ${RISK_LETTER[k]} ${S.stack===k?'on':''}" onclick="setStack('${k}')">
+          <span class="dot"></span>
+          <span><span class="n tnum">${k==='green'?g:k==='orange'?o:r}</span> ${RISK_NAME[k]}</span>
+        </button>`).join('')}
+    </div>
+
+    ${cur.length ? `
+      <div class="actionbar">
+        <div class="txt"><b>${actionText[0]}</b> — ${actionText[1]}</div>
+        ${allowed
+          ? `<button class="btn ${S.stack==='red'?'danger':'primary'}" onclick="startGroup('${S.stack}')">${actionText[0]} · ${bulk.length}</button>`
+          : `<span class="chip">${esc(reason)}</span>`}
+      </div>
+      ${samples ? `<div class="note warn"><b>Выборочный контроль — ${samples} ${plural(samples,'материал','материала','материалов')}.</b> Отмечены в списке. В групповое подтверждение не входят, открываются отдельно.</div>`:''}
+      <div class="rows">${page.map(rowHTML).join('')}</div>
+      ${cur.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${cur.length - page.length}</button></div>` : ''}
+    ` : `<div class="empty"><div class="big">${ICON.check}</div><b>Стопка «${RISK_NAME[S.stack]}» разобрана</b><div>Переключитесь на другую стопку или откройте журнал решений.</div></div>`}
+  `;
+}
+function showMore(){S.shown += 50; render()}
+function plural(n,a,b,c){
+  const m10=n%10, m100=n%100;
+  if(m10===1 && m100!==11) return a;
+  if(m10>=2 && m10<=4 && (m100<10||m100>=20)) return b;
+  return c;
+}
+
+function rowHTML(x){
+  return `<div class="row">
+    <div class="stripe ${RISK_LETTER[x.risk]}"></div>
+    <div>
+      <div class="who">${esc(x.from)} → ${esc(x.to)}</div>
+      <div class="meta">${x.at} · ${esc(x.channel)} · ${esc(x.lang)}</div>
+      <div class="marks">
+        <span class="chip">${esc(x.kindLabel)} · ${esc(x.size)}</span>
+        <span class="chip">${esc(x.dir)}</span>
+        <span class="chip">${esc(x.origin)}</span>
+        ${x.sample?'<span class="chip a">выборочная проверка</span>':''}
+        ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
+      </div>
+    </div>
+    <div>
+      <div class="sum">${esc(x.sum)}</div>
+      <div class="why">${esc(x.why)} <button class="link" onclick="toggleFold('${x.id}')">подробнее</button></div>
+      <div class="fold" id="f-${x.id}">
+        ${esc(x.full)}<br><br>
+        <b>Основание:</b> ${esc(x.basis)}${x.conf?` · уверенность анализатора ${x.conf}%`:''}
+      </div>
+    </div>
+    <div class="acts">
+      <button class="btn sm" onclick="openCard('${x.id}')">Открыть</button>
+    </div>
+  </div>`;
+}
+function toggleFold(id){document.getElementById('f-'+id)?.classList.toggle('open')}
+function setStack(k){S.stack=k; S.shown=30; render()}
+function setTrust(t){S.trust=t; S.shown=30; render()}
+function setSet(name){
+  S.set = name;
+  S.queue = loadQueue(name);
+  S.total = S.queue.length;
+  S.log = []; S.shown = 30; S.stack = 'green'; S.conveyor = null;
+  render();
+  toast('Загружен набор: ' + SETS[name]);
+}
+
+/* ---------------- экран 2: подтверждение группы ---------------- */
+function startGroup(risk){
+  if(risk==='orange'){ startConveyor(); return }
+  const items = bulkSet(risk);
+  if(!items.length){ toast('В этой стопке нечего подтверждать.'); return }
+  const deny = risk==='red';
+
+  modal(`
+    <div class="mh">
+      <div>
+        <h3>${deny?'Оформить недопуск':'Разрешить материалы'} · ${items.length}</h3>
+        <div class="top-sub">${deny?'Проверьте мотивировку по каждому материалу.':'Уберите лишнее, если что-то не должно попасть в группу.'}</div>
+      </div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button>
+    </div>
+    <div class="mb">
+      <div class="clist" id="clist">
+        ${items.map(x=>`
+          <div class="citem" id="ci-${x.id}">
+            <div>
+              <div class="w">${esc(x.from)} → ${esc(x.to)}</div>
+              <div class="s">${x.id} · ${x.at} · ${esc(x.kindLabel)} · ${esc(x.sum)}</div>
+              ${deny?`<textarea aria-label="Мотивировка">${esc(x.full)}</textarea>`:''}
+            </div>
+            <button class="btn sm" onclick="dropFromGroup('${x.id}')">Убрать</button>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn ${deny?'danger':'primary'}" onclick="commitGroup('${risk}')">
+        ${deny?'Подтвердить недопуск':'Подтвердить и пропустить'}
+      </button>
+    </div>`);
+}
+let DROPPED = new Set();
+function dropFromGroup(id){
+  DROPPED.add(id);
+  const el=document.getElementById('ci-'+id); if(el) el.remove();
+  const n=document.querySelectorAll('#clist .citem').length;
+  toast(`Убрано из группы. Осталось ${n}.`);
+}
+function commitGroup(risk){
+  const items = bulkSet(risk).filter(x=>!DROPPED.has(x.id));
+  if(!items.length){ closeModal(); DROPPED=new Set(); toast('Группа пуста — ничего не изменилось.'); return }
+  const deny = risk==='red';
+  const n = items.length;
+  items.forEach(x=>{
+    x.status = deny?'denied':'allowed';
+    S.log.unshift({
+      id:x.id, from:x.from, to:x.to,
+      decision: deny?'deny':'allow',
+      basis: deny ? x.full : 'анализатор не выявил признаков, резюме просмотрено',
+      by:'Соколова Е.С., цензор', at:nowStamp(), group:n
+    });
+  });
+  DROPPED=new Set(); closeModal(); render();
+  toast(`${deny?'Не допущено':'Разрешено'}: ${n} ${plural(n,'материал','материала','материалов')}`);
+}
+function nowStamp(){
+  const d=new Date();
+  return `28.08.2026 ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/* ---------------- конвейер оранжевых ---------------- */
+function startConveyor(){
+  const items = left('orange');
+  if(!items.length){ toast('Оранжевых материалов нет.'); return }
+  S.conveyor = items.map(x=>x.id);
+  openCard(S.conveyor[0]);
+}
+
+/* ---------------- экран 3: карточка ---------------- */
+function openCard(id){S.openId=id; S.view='card'; render()}
+function renderCard(){
+  const x = S.queue.find(m=>m.id===S.openId);
+  if(!x){ go('queue'); return }
+  const inConv = S.conveyor && S.conveyor.includes(x.id);
+  const pos = inConv ? S.conveyor.indexOf(x.id)+1 : 0;
+
+  let bodyHTML = '';
+  if(x.text){
+    bodyHTML = `<div class="body-text">${hlText(x.text, x.hl)}${x.tr?`<div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line2)"><div class="top-sub" style="margin-bottom:4px">Перевод (оригинал сохранён)</div>${esc(x.tr)}</div>`:''}</div>`;
+  } else if(x.ts){
+    bodyHTML = `<div class="body-text"><div class="ts">${
+      x.ts.map(([t,s],i)=>`<div class="t">${t}</div><div>${(x.hlts||[]).includes(i)?`<mark${x.risk==='red'?' class="r"':''}>${esc(s)}</mark>`:esc(s)}</div>`).join('')
+    }</div>${x.tr?`<div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line2)"><div class="top-sub" style="margin-bottom:4px">Перевод (оригинал сохранён)</div>${esc(x.tr)}</div>`:''}</div>`;
+  }
+  const framesHTML = x.frames ? `<div class="card"><h3>Раскадровка</h3><div class="ts">${x.frames.map(([t,d])=>`<div class="t">${t}</div><div>${esc(d)}</div>`).join('')}</div></div>` : '';
+
+  document.getElementById('content').innerHTML = `
+    ${inConv?`<div class="progress"><span>Разбор подряд · ${pos} из ${S.conveyor.length}</span><span class="pbar"><i style="width:${Math.round(pos/S.conveyor.length*100)}%"></i></span></div>`:''}
+    <div class="bar"><button class="btn sm" onclick="go('queue')">← В ленту</button>
+      <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
+      ${x.sample?'<span class="chip a">выборочная проверка качества</span>':''}
+      ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
+    </div>
+
+    <div class="card">
+      <h3>${esc(x.from)} → ${esc(x.to)}</h3>
+      <div class="top-sub">${x.id} · ${x.at} · ${esc(x.dir)} · ${esc(x.channel)} · ${esc(x.lang)} · ${esc(x.size)} · ${esc(x.origin)}</div>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="card"><h3>Содержание</h3>${bodyHTML}</div>
+        ${framesHTML}
+      </div>
+      <div>
+        <div class="card">
+          <h3>Что нашёл анализатор</h3>
+          <div style="margin-bottom:10px">${esc(x.full)}</div>
+          <div class="kv">
+            <div class="k">Основание</div><div>${esc(x.basis)}</div>
+            <div class="k">Уверенность</div><div>${x.conf? x.conf+'%' : '—'}</div>
+            <div class="k">Рекомендация</div><div>${esc(x.rec)}</div>
+          </div>
+          ${x.checked?`<div class="note ok" style="margin:12px 0 0">Проверено правил: <b>${x.checked}</b>. Совпадений не найдено: <b>${x.notFound}</b>.</div>`:''}
+        </div>
+        ${x.protected?`<div class="note warn"><b>Особый режим.</b> Содержание переписки с защитником не раскрывается. Фиксируется только факт и дата.</div>`:''}
+        <div class="card">
+          <h3>Решение</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <button class="btn primary" onclick="decide('${x.id}','allow')">Разрешить</button>
+            <button class="btn danger" onclick="decide('${x.id}','deny')">Не допустить</button>
+            ${x.kind==='text' && !x.protected ? `<button class="btn" onclick="openRedact('${x.id}')">Вымарать фрагмент</button>`:''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function decide(id, what, cut){
+  const x = S.queue.find(m=>m.id===id); if(!x) return;
+  x.status = what==='allow'?'allowed': what==='deny'?'denied':'partial';
+  S.log.unshift({
+    id:x.id, from:x.from, to:x.to, decision:what,
+    basis: what==='deny' ? x.full
+         : what==='partial' ? `вымарано фрагментов: ${cut}; остальное пропущено`
+         : (x.sample ? 'выборочная проверка: решение анализатора подтверждено цензором' : 'материал просмотрен, признаков нарушения не выявлено'),
+    by:'Соколова Е.С., цензор', at:nowStamp(), group:1
+  });
+  const label = what==='allow'?'Разрешено': what==='deny'?'Не допущено':'Пропущено с изъятием фрагментов';
+  // конвейер: сразу следующий
+  if(S.conveyor){
+    S.conveyor = S.conveyor.filter(i=>i!==id);
+    if(S.conveyor.length){ toast(`${label}. Следующий материал — ${S.conveyor.length} ${S.conveyor.length===1?'остался':'осталось'}.`); openCard(S.conveyor[0]); return }
+    S.conveyor=null; toast(`${label}. Стопка «Оранжевые» разобрана.`); go('queue'); return;
+  }
+  toast(label);
+  go('queue');
+}
+
+/* ---------------- экран 4: вымарывание ---------------- */
+function openRedact(id){S.redactId=id; S.redactCut=[]; S.view='redact'; render()}
+function splitFrags(t){
+  return t.split(/(?<=[.!?])\s+/).filter(Boolean);
+}
+function renderRedact(){
+  const x = S.queue.find(m=>m.id===S.redactId);
+  if(!x||!x.text){ go('queue'); return }
+  const frags = splitFrags(x.text);
+  const cut = S.redactCut;
+
+  document.getElementById('content').innerHTML = `
+    <div class="bar"><button class="btn sm" onclick="openCard('${x.id}')">← К материалу</button></div>
+    <div class="card">
+      <h3>Вымарывание фрагмента</h3>
+      <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${x.id}</div>
+    </div>
+    <div class="note">Отметьте предложения, которые нужно изъять.</div>
+    <div class="split">
+      <div class="card">
+        <h3>Исходный текст</h3>
+        <div class="redact">${frags.map((f,i)=>`<span class="frag ${cut.includes(i)?'cut':''}" onclick="toggleFrag(${i})" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFrag(${i})}">${esc(f)}</span> `).join('')}</div>
+      </div>
+      <div class="card">
+        <h3>Что увидит адресат</h3>
+        <div class="preview">${frags.map((f,i)=>cut.includes(i)?`<span class="blk">${esc(f)}</span>`:esc(f)).join(' ')}</div>
+        <div class="kv" style="margin-top:14px">
+          <div class="k">Изъято</div><div>${cut.length} из ${frags.length}</div>
+          <div class="k">Основание</div><div>${esc(x.basis)}</div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap">
+          <button class="btn primary" onclick="confirmRedact()" ${cut.length?'':'disabled'}>Подтвердить и пропустить</button>
+          <button class="btn" onclick="openCard('${x.id}')">Отмена</button>
+        </div>
+      </div>
+    </div>`;
+}
+function toggleFrag(i){
+  const p = S.redactCut.indexOf(i);
+  if(p>=0) S.redactCut.splice(p,1); else S.redactCut.push(i);
+  render();
+}
+function confirmRedact(){
+  const n=S.redactCut.length, id=S.redactId;
+  S.redactId=null; S.redactCut=[];
+  decide(id,'partial',n);
+}
+
+/* ---------------- экран 5: журнал ---------------- */
+function renderLog(){
+  const c = document.getElementById('content');
+  if(!S.log.length){
+    c.innerHTML = `<div class="empty"><div class="big">${ICON.clock}</div><b>Журнал пуст</b><div>Решения появятся здесь сразу после разбора ленты.</div></div>`;
+    return;
+  }
+  const a=S.log.filter(e=>e.decision==='allow').length;
+  const d=S.log.filter(e=>e.decision==='deny').length;
+  const p=S.log.filter(e=>e.decision==='partial').length;
+  const grp=S.log.filter(e=>e.group>1).length;
+
+  c.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="k">Всего решений</div><div class="v tnum">${S.log.length}</div><div class="d">за смену</div></div>
+      <div class="stat"><div class="k">Разрешено</div><div class="v tnum">${a}</div><div class="d">из них в составе групп: ${grp}</div></div>
+      <div class="stat"><div class="k">Не допущено</div><div class="v tnum">${d}</div><div class="d">с мотивировкой по каждому</div></div>
+      <div class="stat"><div class="k">С изъятием</div><div class="v tnum">${p}</div><div class="d">вымарано и пропущено</div></div>
+    </div>
+    <div class="log">${S.log.slice(0,200).map(entryHTML).join('')}</div>
+    ${S.log.length>200?`<div class="more"><span class="chip">показаны последние 200 записей из ${S.log.length}</span></div>`:''}`;
+}
+function entryHTML(e){
+  const cls = e.decision==='allow'?'allow': e.decision==='deny'?'deny':'part';
+  const word = e.decision==='allow'?'разрешено': e.decision==='deny'?'не допущено':'пропущено с изъятием';
+  return `<div class="entry ${cls}">
+    <div class="h"><span class="id">${e.id}</span><span>${esc(e.from)} → ${esc(e.to)}</span><span class="chip ${e.decision==='allow'?'g':e.decision==='deny'?'r':'o'}">${word}</span></div>
+    <div class="l">основание: ${esc(e.basis)}</div>
+    <div class="l">решение приняла: ${esc(e.by)} · ${e.at}${e.group>1?` · <b>в составе группы из ${e.group}</b>`:''}</div>
+  </div>`;
+}
+
+/* ---------------- маршрутизация ---------------- */
+function render(){
+  renderNav();
+  const T = {queue:['Лента цензуры','Пятница, 28 августа 2026 · смена 08:00–20:00'],
+             card:['Материал на проверке','Решение принимает цензор'],
+             redact:['Вымарывание фрагмента','Изъятие части текста с сохранением остального'],
+             log:['Журнал решений','Все решения смены, по одному на материал']}[S.view];
+  document.getElementById('topTitle').textContent = T[0];
+  document.getElementById('topSub').textContent = T[1];
+  ({queue:renderQueue, card:renderCard, redact:renderRedact, log:renderLog})[S.view]();
+  window.scrollTo({top:0});
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal() });
+render();
+</script>
