@@ -263,6 +263,15 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
   box-shadow:0 12px 32px rgba(31,41,55,.28); z-index:90; max-width:calc(100% - 48px)}
 
 
+
+.rolebox select#roleSelect{
+  display:block; width:100%; margin-top:6px; background:var(--surface); color:var(--text);
+  border:1px solid var(--border); border-radius:var(--r-input); padding:9px 11px;
+  font-size:14.5px; font-weight:600; cursor:pointer;
+}
+.rolebox select#roleSelect:focus{outline:0; border-color:var(--primary); box-shadow:0 0 0 3px rgba(111,61,255,.14)}
+.rolebox label.lab{cursor:default}
+
 /* ---------- добавленные разделы ---------- */
 .head-row{display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap}
 .head-acts{display:flex; gap:10px; flex-wrap:wrap; padding-top:6px}
@@ -355,8 +364,13 @@ a.btn{text-decoration:none}
       </div>
     </div>
     <div class="rolebox">
-      <div class="lab">Режим работы</div>
-      <div class="val">Цензор</div>
+      <label class="lab" for="roleSelect">Режим работы</label>
+      <select id="roleSelect" onchange="сменитьРоль(this.value)">
+        <option value="censor">Цензор</option>
+        <option value="operative">Оперативник</option>
+        <option value="head">Начальник учреждения</option>
+        <option value="controller">Контроль переговоров</option>
+      </select>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">ИК-5 · Северный территориальный орган<br>смена 08:00–20:00</div>
@@ -374,10 +388,10 @@ a.btn{text-decoration:none}
           <span>Учреждение: <b>ИК-5</b></span>
         </div>
         <div class="user">
-          <div class="avatar">ЕС</div>
+          <div class="avatar" id="avatar">ЕС</div>
           <div>
-            <div class="nm">Елена Соколова</div>
-            <div class="top-sub">цензор</div>
+            <div class="nm" id="userName">Елена Соколова</div>
+            <div class="top-sub" id="userRole">цензор</div>
           </div>
         </div>
       </div>
@@ -390,6 +404,7 @@ a.btn{text-decoration:none}
 <div id="toastRoot"></div>
 
 <script src="data-reference.js"></script>
+<script src="data-roles.js"></script>
 <script src="data-shift-normal.js"></script>
 <script src="data-shift-peak.js"></script>
 <script>
@@ -494,6 +509,10 @@ let RULES_TOTAL = 0;
 /* ---------------- состояние ---------------- */
 const S = {
   view:'queue',
+  role:'censor',
+  feedFilter:'attention',
+  personQuery:'', personUnit:'all',
+  liveFilter:'all', staffQuery:'',
   set:'shift-peak',
   stack:'green',
   trust:'full',              // full | half | manual
@@ -576,30 +595,89 @@ const ICON = {
   ban: SVG('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>'),
   scissors: SVG('<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8.5 16.5"/><path d="M20 20L8.5 7.5"/>'),
   printer: SVG('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 15h12v6H6z"/>'),
+  feed: SVG('<path d="M3 12h4l2-6 4 12 2-6h6"/>'),
+  people: SVG('<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0112 0"/><path d="M16 5.5a3 3 0 010 5.8"/><path d="M18 20a5 5 0 00-2.5-4.3"/>'),
+  groups: SVG('<circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M8 8.5l3 6.5"/><path d="M16 8.5l-3 6.5"/>'),
+  facility: SVG('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/>'),
+  audit: SVG('<path d="M12 3l8 4v6c0 4.4-3.3 7.6-8 8-4.7-.4-8-3.6-8-8V7z"/><path d="M9 12l2 2 4-4"/>'),
+  services: SVG('<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01"/><path d="M7 16.5h.01"/>'),
+  staff: SVG('<circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0114 0"/>'),
+  complaints: SVG('<path d="M21 12a8 8 0 01-11.5 7.2L3 21l1.8-6.5A8 8 0 1121 12z"/><path d="M12 8v4"/><path d="M12 15h.01"/>'),
+  live: SVG('<circle cx="12" cy="12" r="3"/><path d="M6.5 6.5a8 8 0 000 11"/><path d="M17.5 6.5a8 8 0 010 11"/>'),
+  completed: SVG('<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'),
+  alert: SVG('<path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/>'),
 };
 
-const NAV = [
-  ['queue',       ICON.queue,   'Лента цензуры'],
-  ['assignments', ICON.tasks,   'Мои поручения'],
-  ['archive',     ICON.archive, 'Архив решений'],
-  ['reports',     ICON.reports, 'Журналы и отчёты'],
-  ['channel',     ICON.channel, 'Канал ОСНОВЫ'],
-  ['legal',       ICON.legal,   'Нормативные акты'],
-  ['support',     ICON.support, 'Поддержка'],
-];
+/* ---------------- роли ---------------- */
+
+const РАЗДЕЛЫ = {
+  queue:       [ICON.queue,      'Лента цензуры'],
+  archive:     [ICON.archive,    'Архив решений'],
+  reports:     [ICON.reports,    'Журналы и отчёты'],
+  feed:        [ICON.feed,       'Персональная лента'],
+  people:      [ICON.people,     'Люди и связи'],
+  groups:      [ICON.groups,     'Группы и наблюдение'],
+  facility:    [ICON.facility,   'Состояние учреждения'],
+  audit:       [ICON.audit,      'Самоаудит'],
+  services:    [ICON.services,   'Сервисы'],
+  staff:       [ICON.staff,      'Доступы сотрудников'],
+  complaints:  [ICON.complaints, 'Жалобы и проверки'],
+  live:        [ICON.live,       'Контроль переговоров'],
+  completed:   [ICON.completed,  'Завершённые сегодня'],
+  assignments: [ICON.tasks,      'Мои поручения'],
+  channel:     [ICON.channel,    'Канал ОСНОВЫ'],
+  legal:       [ICON.legal,      'Нормативные акты'],
+  support:     [ICON.support,    'Поддержка'],
+};
+
+const РОЛИ = {
+  censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
+                разделы:['queue','assignments','archive','reports','channel','legal','support'] },
+  operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
+                разделы:['feed','assignments','people','groups','channel','legal','support'] },
+  head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
+                разделы:['facility','assignments','audit','services','staff','complaints','channel','legal','support'] },
+  controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
+                разделы:['live','completed','assignments','channel','legal','support'] },
+};
+
+function сменитьРоль(r){
+  S.role = r;
+  S.view = РОЛИ[r].дом;
+  S.shown = 30; S.conveyor = null; S.openId = null;
+  render();
+  toast('Режим работы: ' + РОЛИ[r].имя);
+}
 function renderNav(){
-  document.getElementById('nav').innerHTML = NAV.map(([v,i,t])=>{
-    const counts = {
-      queue: leftAll().length,
-      assignments: REF.assignments.filter(x=>x.status==='open').length,
-      archive: S.queue.filter(x=>x.status!=='queue').length,
-      reports: S.log.length,
-      channel: REF.channel.length,
-    };
-    const n = counts[v];
+  const роль = РОЛИ[S.role];
+  const счёт = {
+    queue: leftAll().length,
+    assignments: REF.assignments.filter(x=>x.status==='open').length,
+    archive: S.queue.filter(x=>x.status!=='queue').length,
+    reports: S.log.length,
+    channel: REF.channel.length,
+    feed: LIVE.events.filter(e=>e.status==='new').length,
+    people: ROL.persons.length,
+    groups: LIVE.groups.length,
+    live: LIVE.calls.filter(c=>!c.ended).length,
+    audit: LIVE.audit.filter(a=>a.level!=='green').length,
+    staff: LIVE.staff.filter(x=>x.review).length,
+    complaints: LIVE.complaints.filter(c=>c.status!=='закрыто').length,
+  };
+  document.getElementById('nav').innerHTML = роль.разделы.map(v => {
+    const [i, t] = РАЗДЕЛЫ[v];
+    const n = счёт[v];
     const badge = n ? `<span class="badge tnum">${n}</span>` : '';
     return `<button class="${S.view===v?'active':''}" onclick="go('${v}')"><span class="ico">${i}</span><span>${t}</span>${badge}</button>`;
   }).join('');
+
+  // переключатель роли
+  const rb = document.getElementById('roleSelect');
+  if (rb && rb.value !== S.role) rb.value = S.role;
+  const [имя, должность, инициалы] = роль.кто;
+  const un = document.getElementById('userName'); if (un) un.textContent = имя;
+  const ur = document.getElementById('userRole'); if (ur) ur.textContent = должность;
+  const ua = document.getElementById('avatar');  if (ua) ua.textContent = инициалы;
 }
 function go(v){S.view=v; S.openId=null; S.conveyor=null; render()}
 
@@ -1334,6 +1412,569 @@ function openPaperMode(){
 }
 function setPaper(k){ S.paper = k; closeModal(); render(); toast('Бумажный путь: ' + PAPER_LABEL[k]); }
 
+/* ====================================================================
+   ОСТАЛЬНЫЕ РОЛИ
+   Оперативник, начальник учреждения, контроль переговоров.
+   Данные — из data-roles.js, прототип их не выдумывает.
+   ==================================================================== */
+
+const ROL = window.OSNOVA_ROLES || { events:[], persons:[], groups:[], calls:[], staff:[], services:[], audit:[], complaints:[], autoBreaks:[], units:[], facility:{} };
+
+/* живые данные, которые меняются действиями пользователя */
+const LIVE = {
+  calls: (ROL.calls || []).map(c => ({ ...c })),
+  breaks: (ROL.autoBreaks || []).map(b => ({ ...b })),
+  events: (ROL.events || []).map(e => ({ ...e })),
+  audit: (ROL.audit || []).map(a => ({ ...a })),
+  staff: (ROL.staff || []).map(s => ({ ...s })),
+  complaints: (ROL.complaints || []).map(c => ({ ...c })),
+  groups: (ROL.groups || []).map(g => ({ ...g })),
+  контакты: {},   // ключ «идЧеловека:номерКонтакта» → отключенные каналы
+};
+
+/* ================== ОПЕРАТИВНИК ================== */
+
+function renderFeed(){
+  const f = S.feedFilter || 'attention';
+  const все = LIVE.events;
+  const список = f === 'all' ? все : f === 'attention' ? все.filter(e => e.status === 'new') : все.filter(e => e.risk === f);
+  const счёт = { red: все.filter(e=>e.risk==='red'&&e.status==='new').length,
+                 orange: все.filter(e=>e.risk==='orange'&&e.status==='new').length };
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Персональная лента</h1>
+      <p>События, где система не справилась сама и нужен человек.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Требуют решения сейчас</div><div class="v tnum">${счёт.red}</div><div class="d">красные сигналы</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.alert || ICON.queue}</div>
+        <div class="k">Под наблюдением</div><div class="v tnum">${счёт.orange}</div><div class="d">оранжевые сигналы</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Прошло без участия</div><div class="v tnum">1 827</div><div class="d">коммуникаций за сутки</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.tasks}</div>
+        <div class="k">Групп наблюдения</div><div class="v tnum">${LIVE.groups.length}</div><div class="d">автоматических и ручных</div></div>
+    </div>
+
+    <div class="bar">
+      <span class="lab">Показать:</span>
+      <div class="seg">
+        ${[['attention','Требуют внимания'],['red','Красные'],['orange','Оранжевые'],['all','Все']].map(([k,t])=>
+          `<button class="${f===k?'on':''}" onclick="S.feedFilter='${k}'; render()">${t}</button>`).join('')}
+      </div>
+    </div>
+
+    ${список.length ? `<div class="rows">${список.map(событиеHTML).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Событий нет</b><div>Всё, что требовало внимания, разобрано.</div></div>`}
+  `;
+}
+
+function событиеHTML(e){
+  return `<div class="row">
+    <div class="stripe ${RISK_LETTER[e.risk]}"></div>
+    <div>
+      <div class="who">${esc(e.title)}</div>
+      <div class="meta">${esc(e.person)} · ${esc(e.time)}</div>
+      <div class="marks">
+        <span class="chip ${RISK_LETTER[e.risk]}">${RISK_ONE[e.risk]}</span>
+        ${e.confidence ? `<span class="chip">уверенность ${e.confidence}%</span>` : ''}
+        ${e.attempts ? `<span class="chip">повторов: ${e.attempts}</span>` : ''}
+        ${e.status === 'work' ? '<span class="chip a">в работе</span>' : ''}
+        ${e.status === 'done' ? '<span class="chip g">закрыто</span>' : ''}
+      </div>
+    </div>
+    <div>
+      <div class="sum">${esc(e.desc)}</div>
+      ${e.excerpt ? `<div class="why" style="margin-top:6px">${esc(e.excerpt)}</div>` : ''}
+      <div class="why" style="margin-top:6px"><b>Система сделала:</b> ${esc(e.auto)}</div>
+    </div>
+    <div class="acts">
+      <button class="btn sm" onclick="открытьСобытие('${e.id}')">Разобрать</button>
+      ${e.status === 'new' ? `<button class="btn sm primary" onclick="взятьВРаботу('${e.id}')">В работу</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function открытьСобытие(id){
+  const e = LIVE.events.find(x => x.id === id); if (!e) return;
+  modal(`
+    <div class="mh"><div><h3>${esc(e.title)}</h3>
+      <div class="top-sub">${esc(e.person)} · ${esc(e.time)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">Что нашли</div><div>${esc(e.desc)}</div>
+        ${e.excerpt ? `<div class="k">Фрагмент</div><div>${esc(e.excerpt)}</div>` : ''}
+        <div class="k">Основание</div><div>${esc(e.basis)}</div>
+        <div class="k">Уверенность</div><div>${e.confidence ? e.confidence + '%' : '—'}</div>
+        <div class="k">Система сделала</div><div>${esc(e.auto)}</div>
+      </div>
+      <div class="note" style="margin-top:16px">Решение по событию принимает сотрудник. Всё, что система сделала сама, уже записано.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn" onclick="закрытьСобытие('${e.id}')">Закрыть событие</button>
+      <button class="btn primary" onclick="взятьВРаботу('${e.id}')">Взять в работу</button>
+    </div>`);
+}
+function взятьВРаботу(id){ const e = LIVE.events.find(x=>x.id===id); if(e){ e.status='work'; closeModal(); render(); toast('Событие взято в работу'); } }
+function закрытьСобытие(id){ const e = LIVE.events.find(x=>x.id===id); if(e){ e.status='done'; closeModal(); render(); toast('Событие закрыто. История сохранена.'); } }
+
+/* ---------------- Люди и связи ---------------- */
+
+function renderPeople(){
+  const q = (S.personQuery || '').toLowerCase();
+  const отряд = S.personUnit || 'all';
+  const все = ROL.persons;
+  const список = все.filter(p =>
+    (отряд === 'all' || p.unit === отряд) &&
+    (!q || (p.name + ' ' + p.dob + ' ' + p.unit).toLowerCase().includes(q)));
+  const показ = список.slice(0, S.shown);
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Люди и связи</h1>
+      <p>Досье на любого человека в контуре: кто с кем общается и насколько это подтверждено.</p></div>
+
+    <div class="bar">
+      <input id="pq" class="search" placeholder="Поиск по фамилии или дате рождения" value="${esc(S.personQuery||'')}"
+             oninput="S.personQuery=this.value; S.shown=30; renderPeople(); document.getElementById('pq').focus()">
+      <div class="seg">
+        ${['all', ...ROL.units].map(u =>
+          `<button class="${отряд===u?'on':''}" onclick="S.personUnit='${u}'; S.shown=30; render()">${u==='all'?'Все':u}</button>`).join('')}
+      </div>
+      <span class="chip">${список.length} из ${все.length}</span>
+    </div>
+
+    ${показ.length ? `<div class="rows">${показ.map(человекHTML).join('')}</div>
+      ${список.length > показ.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${список.length - показ.length}</button></div>` : ''}`
+      : `<div class="empty"><b>Никого не найдено</b><div>Попробуйте другой запрос или отряд.</div></div>`}
+  `;
+}
+
+function человекHTML(p){
+  const неподтв = p.contacts.filter(c => !c.verified).length;
+  return `<div class="row">
+    <div class="stripe ${RISK_LETTER[p.risk]}"></div>
+    <div>
+      <div class="who">${esc(p.name)}</div>
+      <div class="meta">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(p.unit)}</div>
+      <div class="marks">
+        <span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span>
+        <span class="chip">контактов: ${p.contacts.length}</span>
+        ${неподтв ? `<span class="chip o">не подтверждено: ${неподтв}</span>` : ''}
+      </div>
+    </div>
+    <div>
+      <div class="sum">${esc(p.activity)}</div>
+      <div class="why" style="margin-top:6px">Статья: ${esc(p.article)}</div>
+    </div>
+    <div class="acts"><button class="btn sm primary" onclick="открытьДосье('${p.id}')">Досье</button></div>
+  </div>`;
+}
+
+function открытьДосье(id){
+  const p = ROL.persons.find(x => x.id === id); if (!p) return;
+  modal(`
+    <div class="mh"><div><h3>${esc(p.name)}</h3>
+      <div class="top-sub">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(p.unit)} · ${esc(p.facility)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
+        <div class="k">Активность</div><div>${esc(p.activity)}</div>
+        <div class="k">Статья</div><div>${esc(p.article)}</div>
+        <div class="k">Личность</div><div>${esc(p.source)}</div>
+      </div>
+
+      <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
+      <div class="clist">
+        ${p.contacts.map((c, i) => контактHTML(p.id, i, c)).join('')}
+      </div>
+      <div class="note" style="margin-top:14px">Отключение канала — это ограничение доступности контакта в ОСНОВЕ,
+        а не правка заявления заключённого. Основание и срок сохраняются в журнале.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+}
+
+function контактHTML(pid, i, c){
+  const ключ = pid + ':' + i;
+  const выкл = LIVE.контакты[ключ] || {};
+  const каналы = [['phone','телефон'],['video','видео'],['message','сообщения']];
+  return `<div class="citem"><div>
+      <div class="w">${esc(c.name)} ${c.protected ? '<span class="chip a">защищённый</span>' : ''}</div>
+      <div class="s">${esc(c.role)} · ${esc(c.phone)} · ${c.verified ? 'подтверждён' : 'не подтверждён'}</div>
+      <div class="marks" style="margin-top:8px">
+        ${каналы.map(([k, t]) => `<button class="chip ${выкл[k] ? 'r' : 'g'}"
+            onclick="переключитьКанал('${pid}',${i},'${k}')" title="${c.protected ? 'Защищённый контакт' : 'Нажмите, чтобы переключить'}">
+            ${t}: ${выкл[k] ? 'выкл' : 'вкл'}</button>`).join('')}
+      </div>
+    </div></div>`;
+}
+
+function переключитьКанал(pid, i, k){
+  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
+  const c = p.contacts[i];
+  if (c.protected) { toast('Защищённый контакт: изменение доступно только по специальному основанию'); return; }
+  const ключ = pid + ':' + i;
+  LIVE.контакты[ключ] = LIVE.контакты[ключ] || {};
+  LIVE.контакты[ключ][k] = !LIVE.контакты[ключ][k];
+  открытьДосье(pid);
+  toast('Изменение записано в журнал с основанием и сроком пересмотра');
+}
+
+/* ---------------- Группы и наблюдение ---------------- */
+
+function renderGroups(){
+  const авто = LIVE.groups.filter(g => g.type === 'auto');
+  const ручные = LIVE.groups.filter(g => g.type === 'manual');
+  const блок = g => `
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap">
+        <div>
+          <div style="font-weight:650; font-size:16px; margin-bottom:4px">
+            <span class="chip ${g.color==='red'?'r':g.color==='orange'?'o':'g'}">${g.count}</span> ${esc(g.name)}</div>
+          <div class="top-sub">${esc(g.criterion)}</div>
+          <div style="margin-top:9px; color:var(--muted); font-size:14px"><b>Что делает система:</b> ${esc(g.policy)}</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center">
+          ${g.listen ? `<button class="btn sm ${g.on ? 'primary' : ''}" onclick="переключитьПрослушивание('${g.id}')">
+              ${g.on ? 'Оповещения включены' : 'Включить оповещения'}</button>` : ''}
+          <span class="chip">${g.type === 'auto' ? 'автоматическая' : 'ручная'}</span>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Группы и наблюдение</h1>
+      <p>Автоматические группы система собирает сама. Ручные создаёт оперативник под конкретную задачу.</p></div>
+    <h2 class="sect">Автоматические · ${авто.length}</h2>
+    ${авто.map(блок).join('')}
+    <h2 class="sect">Ручные · ${ручные.length}</h2>
+    ${ручные.map(блок).join('')}
+    <div class="note">Группа не вводит ограничений сама по себе. Она меняет приоритет сигналов
+      и то, что система показывает сотруднику.</div>
+  `;
+}
+function переключитьПрослушивание(id){
+  const g = LIVE.groups.find(x => x.id === id); if (!g) return;
+  g.on = !g.on; render();
+  toast(g.on ? 'Оповещения о начале разговора включены' : 'Оповещения выключены');
+}
+
+/* ================== КОНТРОЛЬ ПЕРЕГОВОРОВ ================== */
+
+function renderLive(){
+  const f = S.liveFilter || 'all';
+  const активные = LIVE.calls.filter(c => !c.ended);
+  const красных = активные.filter(c => c.riskLevel === 'red').length;
+  const оранжевых = активные.filter(c => c.riskLevel === 'orange').length;
+  const список = f === 'all' ? активные : активные.filter(c => c.riskLevel === f);
+  const обрывы = LIVE.breaks.filter(b => b.status === 'open');
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Контроль переговоров</h1>
+      <p>Идут прямо сейчас. Система слушает все, человек подключается к тем, где есть сигнал.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.channel}</div>
+        <div class="k">Идут сейчас</div><div class="v tnum">${активные.length}</div><div class="d">разговоров</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">С красным сигналом</div><div class="v tnum">${красных}</div><div class="d">требуют решения</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.queue}</div>
+        <div class="k">С оранжевым</div><div class="v tnum">${оранжевых}</div><div class="d">под наблюдением</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.clock}</div>
+        <div class="k">Автообрывов за смену</div><div class="v tnum">${LIVE.breaks.length}</div><div class="d">незакрытых: ${обрывы.length}</div></div>
+    </div>
+
+    ${обрывы.length ? `
+      <div class="card" style="border-color:#F6C6DC">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap">
+          <h3 style="margin:0">Автообрывы сегодня · ${обрывы.length}</h3>
+          <button class="btn sm" onclick="закрытьВсеОбрывы()">Закрыть все</button>
+        </div>
+        <div class="top-sub" style="margin:8px 0 14px">После обрыва событие не исчезает: его нужно закрыть, и история останется в суточном журнале.</div>
+        <div class="clist">${обрывы.map(b => `
+          <div class="citem"><div>
+            <div class="w"><span class="chip ${b.risk==='red'?'r':'o'}">${b.time}</span> ${esc(b.person)} · ${esc(b.contact)}</div>
+            <div class="s">${esc(b.reason)}</div>
+          </div><button class="btn sm" onclick="закрытьОбрыв(${b.id})">Закрыть</button></div>`).join('')}</div>
+      </div>` : ''}
+
+    <div class="bar">
+      <span class="lab">Показать:</span>
+      <div class="seg">
+        ${[['all','Все · '+активные.length],['red','Красные · '+красных],['orange','Оранжевые · '+оранжевых]].map(([k,t])=>
+          `<button class="${f===k?'on':''}" onclick="S.liveFilter='${k}'; render()">${t}</button>`).join('')}
+      </div>
+    </div>
+
+    ${список.length ? `<div class="rows">${список.slice(0, S.shown).map(звонокHTML).join('')}</div>
+      ${список.length > S.shown ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${список.length - S.shown}</button></div>` : ''}`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Разговоров с таким сигналом нет</b></div>`}
+  `;
+}
+
+function звонокHTML(c){
+  const r = c.riskLevel || '';
+  return `<div class="row">
+    <div class="stripe ${r === 'red' ? 'r' : r === 'orange' ? 'o' : 'g'}"></div>
+    <div>
+      <div class="who">${esc(c.person)}</div>
+      <div class="meta">идёт ${esc(c.time)} · ${esc(c.device)}</div>
+      <div class="marks">
+        <span class="chip">${c.medium === 'video' ? 'видео и звук' : 'голос'}</span>
+        <span class="chip">${esc(c.contact)}</span>
+      </div>
+    </div>
+    <div><div class="sum">${esc(c.note)}</div></div>
+    <div class="acts">
+      <button class="btn sm" onclick="подключиться(${c.id})">Подключиться</button>
+      <button class="btn sm danger" onclick="подтвердитьОбрыв(${c.id})">Прекратить</button>
+    </div>
+  </div>`;
+}
+
+function подключиться(id){
+  const c = LIVE.calls.find(x => x.id === id); if (!c) return;
+  toast('Подключение к разговору ' + c.person + '. Факт подключения записан в журнал.');
+}
+
+function подтвердитьОбрыв(id){
+  const c = LIVE.calls.find(x => x.id === id); if (!c) return;
+  modal(`
+    <div class="mh"><div><h3>Досрочно прекратить разговор?</h3>
+      <div class="top-sub">${esc(c.person)} · ${esc(c.contact)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn"><b>Прекращение разговора затрагивает права человека.</b>
+        По ПВР требуется основание и письменный доклад. Основание сохранится автоматически,
+        событие останется в журнале смены до закрытия.</div>
+      <div class="kv" style="margin-top:16px">
+        <div class="k">Что нашла система</div><div>${esc(c.note)}</div>
+        <div class="k">Канал</div><div>${c.medium === 'video' ? 'видео и звук' : 'голос'} · ${esc(c.device)}</div>
+      </div>
+      <label class="fld" style="margin-top:16px">Основание
+        <select id="прич">
+          <option>Признаки обсуждения запрещённой темы</option>
+          <option>Незаявленный участник разговора</option>
+          <option>Переход на незаявленный язык после предупреждения</option>
+          <option>Признаки угрозы</option>
+        </select></label>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn danger" onclick="прекратить(${c.id})">Прекратить разговор</button>
+    </div>`);
+}
+function прекратить(id){
+  const c = LIVE.calls.find(x => x.id === id); if (!c) return;
+  const причина = (document.getElementById('прич') || {}).value || c.note;
+  c.ended = true;
+  LIVE.breaks.push({ id: Date.now(), time: nowStamp().slice(-5), person: c.person,
+    contact: c.contact, risk: c.riskLevel || 'orange', reason: причина, status: 'open' });
+  closeModal(); render();
+  toast('Разговор прекращён. Событие добавлено в журнал смены.');
+}
+function закрытьОбрыв(id){ const b = LIVE.breaks.find(x=>x.id===id); if(b){ b.status='closed'; render(); toast('Событие закрыто, история сохранена'); } }
+function закрытьВсеОбрывы(){ LIVE.breaks.forEach(b => b.status='closed'); render(); toast('Все автообрывы закрыты. История сохранена в суточном журнале.'); }
+
+function renderCompleted(){
+  const завершённые = LIVE.calls.filter(c => c.ended);
+  const обрывы = LIVE.breaks;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Завершённые сегодня</h1>
+      <p>Разговоры, которые уже закончились, и чем именно они закончились.</p></div>
+    ${обрывы.length ? `<div class="rows">${обрывы.map(b => `
+      <div class="row">
+        <div class="stripe ${b.risk==='red'?'r':'o'}"></div>
+        <div>
+          <div class="who">${esc(b.person)}</div>
+          <div class="meta">${esc(b.time)} · ${esc(b.contact)}</div>
+          <div class="marks"><span class="chip r">досрочно прекращён</span>
+            <span class="chip ${b.status==='open'?'o':'g'}">${b.status==='open'?'событие открыто':'событие закрыто'}</span></div>
+        </div>
+        <div><div class="sum">${esc(b.reason)}</div></div>
+        <div class="acts">${b.status==='open'?`<button class="btn sm" onclick="закрытьОбрыв(${b.id})">Закрыть</button>`:''}</div>
+      </div>`).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Прекращённых разговоров нет</b></div>`}
+    <div class="note" style="margin-top:18px">Всего завершено разговоров за смену: ${завершённые.length + 118}.
+      Из них прекращено досрочно: ${обрывы.length}.</div>
+  `;
+}
+
+/* ================== НАЧАЛЬНИК УЧРЕЖДЕНИЯ ================== */
+
+function renderFacility(){
+  const ф = ROL.facility;
+  const срочных = LIVE.audit.filter(a => a.level === 'red').length;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Состояние учреждения</h1>
+      <p>${esc(ф.name)} · ${esc(ф.region)}. Только то, что требует решения.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Требует решения</div><div class="v tnum">${(ф.needsDecision||[]).filter(x=>x.level==='red').length}</div>
+        <div class="d">сегодня</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.queue}</div>
+        <div class="k">Замечаний самоаудита</div><div class="v tnum">${срочных}</div><div class="d">срочных</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.tasks}</div>
+        <div class="k">Некомплект штата</div><div class="v tnum">${Math.round(ф.staffShortage/ф.staffTotal*100)}%</div>
+        <div class="d">${ф.staffShortage} из ${ф.staffTotal} ставок</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Заключённых</div><div class="v tnum">${ф.inmates}</div><div class="d">на контуре связи</div></div>
+    </div>
+
+    <h2 class="sect">Требует вашего решения</h2>
+    <div class="rows">
+      ${(ф.needsDecision||[]).map(d => `
+        <div class="row">
+          <div class="stripe ${d.level==='red'?'r':'o'}"></div>
+          <div><div class="who">${esc(d.title)}</div><div class="meta">${esc(d.note)}</div></div>
+          <div></div>
+          <div class="acts"><button class="btn sm primary" onclick="go('${d.link}')">Перейти</button></div>
+        </div>`).join('')}
+    </div>
+
+    <div class="note" style="margin-top:20px">Сводка не показывает то, что идёт нормально.
+      Если раздел пуст — значит, вмешательства не требуется.</div>
+  `;
+}
+
+function renderAudit(){
+  const открытые = LIVE.audit.filter(a => a.level !== 'green');
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Самоаудит учреждения</h1>
+      <p>Система ежедневно проверяет сроки, журналы, подтверждения и доступы. Показывает только расхождения.</p></div>
+    ${LIVE.audit.map(a => `
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap">
+          <div>
+            <div style="font-weight:650; font-size:16px; margin-bottom:4px">
+              <span class="chip ${a.level==='red'?'r':a.level==='orange'?'o':'g'}">${a.level==='red'?'срочно':a.level==='orange'?'внимание':'в порядке'}</span>
+              ${esc(a.title)}</div>
+            <div class="top-sub">Ответственный: ${esc(a.who)} · срок: ${esc(a.due)}</div>
+            <div style="margin-top:9px; color:var(--muted); font-size:14px">${esc(a.note)}</div>
+          </div>
+          ${a.level !== 'green' ? `<button class="btn sm primary" onclick="закрытьЗамечание('${a.id}')">Отработано</button>`
+            : '<span class="chip g">закрыто</span>'}
+        </div>
+      </div>`).join('')}
+    ${открытые.length ? '' : '<div class="note ok">Открытых замечаний нет.</div>'}
+  `;
+}
+function закрытьЗамечание(id){ const a = LIVE.audit.find(x=>x.id===id); if(a){ a.level='green'; a.due='выполнено сегодня'; render(); toast('Замечание закрыто'); } }
+
+function renderServices(){
+  const цвет = s => s === 'работает' ? 'g' : s === 'ограничен' ? 'o' : 'r';
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Сервисы</h1>
+      <p>Что подключено на контуре учреждения и как оно себя ведёт.</p></div>
+    <div class="rows">
+      ${ROL.services.map(s => `
+        <div class="row">
+          <div class="stripe ${цвет(s.state)}"></div>
+          <div><div class="who">${esc(s.name)}</div>
+            <div class="meta">нагрузка: ${esc(s.load)}</div>
+            <div class="marks"><span class="chip ${цвет(s.state)}">${esc(s.state)}</span></div></div>
+          <div><div class="sum">${esc(s.note)}</div></div>
+          <div class="acts"><button class="btn sm" onclick="toast('Подключение и отключение сервисов выполняется через службу сопровождения ЗТ')">Настроить</button></div>
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+function renderStaff(){
+  const q = (S.staffQuery || '').toLowerCase();
+  const все = LIVE.staff;
+  const список = q ? все.filter(s => (s.name + ' ' + s.role + ' ' + s.unit).toLowerCase().includes(q)) : все;
+  const проверить = все.filter(s => s.review).length;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Доступы сотрудников</h1>
+      <p>Кто имеет доступ к ОСНОВЕ и когда последний раз им пользовался.</p></div>
+
+    ${проверить ? `<div class="note warn"><b>Требуют подтверждения: ${проверить}.</b>
+      Доступ продолжает действовать, пока его не приостановили. Это то, что первым смотрят на проверке.</div>` : ''}
+
+    <div class="bar">
+      <input id="sq" class="search" placeholder="Поиск по фамилии, должности или отряду" value="${esc(S.staffQuery||'')}"
+             oninput="S.staffQuery=this.value; renderStaff(); document.getElementById('sq').focus()">
+      <span class="chip">${список.length} из ${все.length}</span>
+    </div>
+
+    <div class="rows">
+      ${список.slice(0, 40).map(s => `
+        <div class="row">
+          <div class="stripe ${s.review ? 'o' : 'g'}"></div>
+          <div><div class="who">${esc(s.name)}</div>
+            <div class="meta">${esc(s.role)} · ${esc(s.unit)}</div>
+            <div class="marks">
+              <span class="chip ${s.access==='действует'?'g':'r'}">${esc(s.access)}</span>
+              <span class="chip">активность: ${esc(s.lastActive)}</span>
+              ${s.review ? `<span class="chip o">${esc(s.reason)}</span>` : ''}
+            </div></div>
+          <div></div>
+          <div class="acts">
+            ${s.review ? `<button class="btn sm" onclick="приостановить('${s.id}')">Приостановить</button>
+                          <button class="btn sm primary" onclick="подтвердитьДоступ('${s.id}')">Подтвердить</button>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>
+    ${список.length > 40 ? `<div class="more"><span class="chip">показаны первые 40 из ${список.length}</span></div>` : ''}
+  `;
+}
+function подтвердитьДоступ(id){ const s = LIVE.staff.find(x=>x.id===id); if(s){ s.review=false; s.reason=''; s.lastActive='сегодня'; render(); toast('Доступ подтверждён'); } }
+function приостановить(id){ const s = LIVE.staff.find(x=>x.id===id); if(s){ s.access='приостановлен'; s.review=false; render(); toast('Доступ приостановлен. Сотрудник получит уведомление.'); } }
+
+function renderComplaints(){
+  const открытые = LIVE.complaints.filter(c => c.status !== 'закрыто');
+  const закрытые = LIVE.complaints.filter(c => c.status === 'закрыто');
+  const строка = c => `
+    <div class="row">
+      <div class="stripe ${c.status==='закрыто' ? 'g' : c.kind==='проверка' ? 'o' : 'r'}"></div>
+      <div><div class="who">${esc(c.subject)}</div>
+        <div class="meta">${esc(c.id)} · ${esc(c.from)} · поступило ${esc(c.at)}</div>
+        <div class="marks"><span class="chip ${c.kind==='проверка'?'a':''}">${esc(c.kind)}</span>
+          <span class="chip ${c.status==='закрыто'?'g':'o'}">${esc(c.status)}</span>
+          ${c.status!=='закрыто' ? `<span class="chip o">срок ${esc(c.due)}</span>` : ''}</div></div>
+      <div><div class="sum">${esc(c.text)}</div>
+        ${c.answer ? `<div class="why" style="margin-top:6px"><b>Ответ:</b> ${esc(c.answer)}</div>` : ''}</div>
+      <div class="acts">${c.status!=='закрыто' ? `<button class="btn sm primary" onclick="ответитьЖалоба('${c.id}')">Ответить</button>` : ''}</div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Жалобы и проверки</h1>
+      <p>Обращения граждан и запросы надзорных органов. Сроки считает система.</p></div>
+    <h2 class="sect">В работе · ${открытые.length}</h2>
+    ${открытые.length ? `<div class="rows">${открытые.map(строка).join('')}</div>`
+      : '<div class="empty"><b>Открытых обращений нет</b></div>'}
+    ${закрытые.length ? `<h2 class="sect">Закрыто · ${закрытые.length}</h2><div class="rows">${закрытые.map(строка).join('')}</div>` : ''}
+  `;
+}
+function ответитьЖалоба(id){
+  const c = LIVE.complaints.find(x => x.id === id); if (!c) return;
+  modal(`
+    <div class="mh"><div><h3>Ответ по обращению</h3>
+      <div class="top-sub">${esc(c.id)} · ${esc(c.from)} · срок ${esc(c.due)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="card" style="background:var(--bg); margin-bottom:16px">
+        <div style="font-weight:650; margin-bottom:6px">${esc(c.subject)}</div>
+        <div style="color:var(--muted)">${esc(c.text)}</div></div>
+      <label class="fld">Ответ<textarea id="жо" placeholder="Что выяснено и какие меры приняты"></textarea></label>
+      ${c.kind === 'проверка' ? '<div class="note warn">Запрос надзорного органа. Ответ уходит официально и приобщается к делу.</div>' : ''}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="отправитьЖалоба('${c.id}')">Отправить и закрыть</button></div>`);
+}
+function отправитьЖалоба(id){
+  const c = LIVE.complaints.find(x => x.id === id); if (!c) return;
+  const t = (document.getElementById('жо') || {}).value || '';
+  if (!t.trim()) { toast('Ответ пустой — напишите текст'); return; }
+  c.answer = t.trim(); c.status = 'закрыто';
+  closeModal(); render(); toast('Ответ отправлен, обращение закрыто');
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -1347,12 +1988,26 @@ function render(){
     channel:     ['Канал ОСНОВЫ', 'Сообщения от руководства и службы сопровождения'],
     legal:       ['Нормативные акты', 'Документы, на которые ссылаются основания'],
     support:     ['Поддержка', 'Если что-то не работает'],
+    feed:        ['Персональная лента', 'События, где нужен человек'],
+    people:      ['Люди и связи', 'Досье и перечни контактов'],
+    groups:      ['Группы и наблюдение', 'Автоматические и ручные подборки'],
+    facility:    ['Состояние учреждения', 'Что требует решения сегодня'],
+    audit:       ['Самоаудит', 'Расхождения по срокам, журналам и доступам'],
+    services:    ['Сервисы', 'Что подключено на контуре'],
+    staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
+    complaints:  ['Жалобы и проверки', 'Обращения граждан и надзорных органов'],
+    live:        ['Контроль переговоров', 'Разговоры, которые идут сейчас'],
+    completed:   ['Завершённые сегодня', 'Чем закончились разговоры смены'],
   }[S.view];
   document.getElementById('topTitle').textContent = T[0];
   document.getElementById('topSub').textContent = T[1];
   ({ queue:renderQueue, card:renderCard, redact:renderRedact,
      assignments:renderAssignments, archive:renderArchive, reports:renderReports,
-     channel:renderChannel, legal:renderLegal, support:renderSupport })[S.view]();
+     channel:renderChannel, legal:renderLegal, support:renderSupport,
+     feed:renderFeed, people:renderPeople, groups:renderGroups,
+     facility:renderFacility, audit:renderAudit, services:renderServices,
+     staff:renderStaff, complaints:renderComplaints,
+     live:renderLive, completed:renderCompleted })[S.view]();
   window.scrollTo({top:0});
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal() });
