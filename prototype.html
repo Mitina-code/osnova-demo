@@ -406,6 +406,7 @@ a.btn{text-decoration:none}
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
+<script src="data-population.js"></script>
 <script src="data-reference.js"></script>
 <script src="data-roles.js"></script>
 <script src="data-shift-normal.js"></script>
@@ -428,6 +429,42 @@ a.btn{text-decoration:none}
    Публичное зеркало прототипа: github.com/Mitina-code/osnova-demo
    ======================================================================= */
 
+/* --------------------------------------------------------------
+   НАСЕЛЕНИЕ УЧРЕЖДЕНИЯ
+   Приходит сжатым: человек — массив, а не объект. На 2400 людях
+   это вдвое меньше веса. Здесь разворачиваем обратно один раз.
+   -------------------------------------------------------------- */
+const СТРАНА = { ru:'Россия', uz:'Узбекистан', tg:'Таджикистан' };
+const РИСК_СЛОВОМ = { red:'высокий', orange:'повышенный', green:'обычный' };
+
+const POP = (() => {
+  const сырое = window.OSNOVA_POP;
+  if (!сырое) return { люди: [], поId: {}, сводка: {}, параметры: {} };
+  const люди = сырое.люди.map(([id, name, dob, lang, unit, article, since, risk, zt, contacts]) => ({
+    id, name, dob, lang, unit, article, since, risk,
+    zt: !!zt,
+    citizenship: СТРАНА[lang] || lang,
+    riskText: РИСК_СЛОВОМ[risk],
+    contacts: contacts.map(([cn, cr, cp, cv, cprot]) => ({
+      name: cn, role: cr, phone: cp, verified: !!cv, protected: !!cprot,
+      risk: cprot ? 'green' : (cv ? 'green' : 'orange'),
+    })),
+  }));
+  const поId = {};
+  люди.forEach(p => { поId[p.id] = p; });
+  return { люди, поId, сводка: сырое.сводка || {}, параметры: сырое.параметры || {} };
+})();
+
+/* Кто участвует в материале: человек из населения и один из его контактов. */
+function участники(m){
+  const чел = POP.поId[m.pid];
+  const контакт = чел && чел.contacts[m.ci];
+  if (!чел || !контакт) return null;
+  return m.dir === 'in'
+    ? { отправитель: контакт, получатель: чел, чел, контакт }
+    : { отправитель: чел, получатель: контакт, чел, контакт };
+}
+
 const SETS = {
   'shift-normal': 'Обычный день · 200',
   'shift-peak':   'Пиковый день · 500',
@@ -446,48 +483,44 @@ const mmss = sec => `${pad2(Math.floor(sec / 60))}:${pad2(sec % 60)}`;
 /* Перевод материала из формата контракта в формат экранов. */
 function fromContract(m) {
   const a = m.a;
+  const уч = участники(m);
+  const чел = уч ? уч.чел : null;
+  const контакт = уч ? уч.контакт : null;
   const lang = LANG_LABEL[m.lang] || m.lang;
-  const translated = m.content && m.content.translation;
+  const переведено = m.content && m.content.translation;
 
   const ts = (m.content && m.content.transcript)
     ? m.content.transcript.map(x => [mmss(x.t), x.s])
     : null;
-
-  // какие реплики подсветить: те, что анализатор пометил
   const hlts = ts
     ? ts.map(([, s], i) => (a.hl || []).some(h => s.includes(h) || h.includes(s)) ? i : -1).filter(i => i >= 0)
     : [];
 
   return {
     id: m.id,
+    pid: m.pid,
     risk: a.risk,
     at: hhmm(m.at),
-    from: m.from.name,
-    to: m.to.name,
+    from: уч ? уч.отправитель.name : '—',
+    to: уч ? уч.получатель.name : '—',
+    unit: чел ? чел.unit : '',
     dir: DIR_LABEL[m.dir] || m.dir,
     channel: CHANNEL_LABEL[m.channel] || m.channel,
     kind: m.kind,
     kindLabel: KIND_LABEL[m.kind] || m.kind,
     size: m.size,
     origin: ORIGIN_LABEL[m.origin] || m.origin,
-    lang: translated ? `${lang} → русский` : lang,
-    sum: a.sum,
-    why: a.why,
-    full: a.full,
-    basis: a.basis,
-    conf: a.conf,
-    checked: a.checked,
-    notFound: a.notFound,
-    rec: a.rec,
+    lang: переведено ? `${lang} → русский` : lang,
+    sum: a.sum, why: a.why, full: a.full, basis: a.basis, conf: a.conf,
+    checked: a.checked, notFound: a.notFound, rec: a.rec,
     text: m.content ? m.content.text : null,
     ts,
-    tr: translated || null,
+    tr: переведено || null,
     frames: (m.content && m.content.frames) ? m.content.frames.map(x => [x.t, x.d]) : null,
     hl: a.hl || [],
     hlts,
     sample: !!m.sample,
-    protected: !!(m.from.protected || m.to.protected),
-    prov: m.prov || [],
+    protected: !!(контакт && контакт.protected),
     status: 'queue',
   };
 }
@@ -1423,7 +1456,15 @@ function setPaper(k){ S.paper = k; closeModal(); render(); toast('Бумажны
    Данные — из data-roles.js, прототип их не выдумывает.
    ==================================================================== */
 
-const ROL = window.OSNOVA_ROLES || { events:[], persons:[], groups:[], calls:[], staff:[], services:[], audit:[], complaints:[], autoBreaks:[], units:[], facility:{} };
+const ROL = window.OSNOVA_ROLES || { events:[], groups:[], calls:[], staff:[], services:[], audit:[], complaints:[], autoBreaks:[], units:[], facility:{} };
+
+/* Досье оперативника — это население учреждения, а не отдельный список.
+   Активность считается из материалов смены, поэтому цифра настоящая. */
+ROL.persons = POP.люди;
+function активностьЧеловека(p){
+  const n = (S.queue || []).filter(m => m.pid === p.id).length;
+  return n ? `${n} материал(ов) за смену` : (p.zt ? 'продуктами ЗТ пользуется, за смену тихо' : 'продуктами ЗТ не пользуется');
+}
 
 /* живые данные, которые меняются действиями пользователя */
 const LIVE = {
@@ -1575,8 +1616,8 @@ function человекHTML(p){
       </div>
     </div>
     <div>
-      <div class="sum">${esc(p.activity)}</div>
-      <div class="why" style="margin-top:6px">Статья: ${esc(p.article)}</div>
+      <div class="sum">${esc(активностьЧеловека(p))}</div>
+      <div class="why" style="margin-top:6px">Статья ${esc(p.article)} · в учреждении с ${esc(p.since)}</div>
     </div>
     <div class="acts"><button class="btn sm primary" onclick="открытьДосье('${p.id}')">Досье</button></div>
   </div>`;
@@ -1591,9 +1632,10 @@ function открытьДосье(id){
     <div class="mb">
       <div class="kv">
         <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
-        <div class="k">Активность</div><div>${esc(p.activity)}</div>
+        <div class="k">Активность</div><div>${esc(активностьЧеловека(p))}</div>
         <div class="k">Статья</div><div>${esc(p.article)}</div>
-        <div class="k">Личность</div><div>${esc(p.source)}</div>
+        <div class="k">В учреждении с</div><div>${esc(p.since)}</div>
+        <div class="k">Продукты ЗТ</div><div>${p.zt ? 'пользуется' : 'не пользуется — перечня контактов нет'}</div>
       </div>
 
       <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
@@ -1848,6 +1890,8 @@ function renderCompleted(){
 
 function renderFacility(){
   const ф = ROL.facility;
+  const св = POP.сводка;
+  const доля = n => (n / св.всего * 100).toFixed(0) + '%';
   const срочных = LIVE.audit.filter(a => a.level === 'red').length;
   document.getElementById('content').innerHTML = `
     <div class="page-head"><h1>Состояние учреждения</h1>
@@ -1875,6 +1919,20 @@ function renderFacility(){
           <div></div>
           <div class="acts"><button class="btn sm primary" onclick="go('${d.link}')">Перейти</button></div>
         </div>`).join('')}
+    </div>
+
+    <h2 class="sect">Население учреждения</h2>
+    <div class="card">
+      <div class="kv">
+        <div class="k">Всего</div><div>${св.всего} человек</div>
+        <div class="k">Граждане России</div><div>${св.россияне} · ${доля(св.россияне)}</div>
+        <div class="k">Иностранные граждане</div><div>${св.иностранцы} · ${доля(св.иностранцы)} — узбеки ${св.узбеки}, таджики ${св.таджики}</div>
+        <div class="k">Пользуются продуктами ЗТ</div><div>${св.активныеЗТ} · ${доля(св.активныеЗТ)}</div>
+        <div class="k">Не охвачены</div><div>${св.всего - св.активныеЗТ} · ${доля(св.всего - св.активныеЗТ)} — связь не налажена</div>
+        <div class="k">Контактов в перечнях</div><div>${св.контактовВсего}</div>
+      </div>
+      <div class="note warn" style="margin-bottom:0">Каждый третий — иностранный гражданин. Их переписка требует перевода,
+        а контакты чаще не подтверждены: это самая тяжёлая для цензора часть потока.</div>
     </div>
 
     <div class="note" style="margin-top:20px">Сводка не показывает то, что идёт нормально.
@@ -2134,7 +2192,7 @@ function renderGroup(){
         <div class="stripe ${RISK_LETTER[p.risk]}"></div>
         <div><div class="who">${esc(p.name)}</div>
           <div class="meta">${esc(p.dob)} · ${esc(p.unit)} · ${esc(p.citizenship)}</div></div>
-        <div><div class="sum">${esc(p.activity)}</div></div>
+        <div><div class="sum">${esc(активностьЧеловека(p))}</div></div>
         <div class="acts">
           <button class="btn sm" onclick="открытьДосье('${p.id}')">Досье</button>
           ${g.type === 'manual' ? `<button class="btn sm danger" onclick="убратьИзГруппы('${g.id}','${p.id}')">Убрать</button>` : ''}
@@ -2188,9 +2246,9 @@ function связиЧеловека(p){
   return связи;
 }
 
+/* Точное совпадение по номеру человека: материал больше не ищется по фамилии. */
 function историяЧеловека(p){
-  const фамилия = p.name.split(' ')[0];
-  return S.queue.filter(m => m.from.includes(фамилия) || m.to.includes(фамилия)).slice(0, 8);
+  return S.queue.filter(m => m.pid === p.id).slice(0, 10);
 }
 
 /* ---------------- Отчёты и подборки ---------------- */
@@ -2204,6 +2262,8 @@ const ПОДБОРКИ = [
     фильтр: p => p.citizenship !== 'Россия' },
   { id: 'unverified', name: 'Неподтверждённые контакты', note: 'В перечне есть номера без подтверждённой личности',
     фильтр: p => p.contacts.some(c => !c.verified) },
+  { id: 'nozt', name: 'Не пользуются продуктами ЗТ', note: 'Связь не налажена: ни писем, ни звонков. Потенциал охвата',
+    фильтр: p => !p.zt },
 ];
 
 function renderOpReports(){
