@@ -272,6 +272,63 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .rolebox select#roleSelect:focus{outline:0; border-color:var(--primary); box-shadow:0 0 0 3px rgba(111,61,255,.14)}
 .rolebox label.lab{cursor:default}
 
+
+/* ---------- фраза дня, праздник, журнал ---------- */
+.фраза{
+  display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;
+  background:linear-gradient(120deg, var(--lilac), var(--soft-mint));
+  border:1px solid var(--accent-line); border-radius:var(--r-card);
+  padding:16px 20px; margin-bottom:20px;
+}
+.фраза-текст{font-size:16px; font-weight:550; color:#3d2b6b; max-width:760px; line-height:1.6}
+
+.праздник{
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  background:var(--surface); border:1px solid var(--accent-line);
+  border-radius:var(--r-card); padding:20px 22px; margin-bottom:14px;
+  box-shadow:0 2px 14px rgba(111,61,255,.10);
+}
+.праздник-арт{width:120px; flex:none}
+.праздник-арт svg{width:100%; height:auto; display:block; border-radius:12px}
+.праздник-загл{font-size:19px; font-weight:700; margin-bottom:6px}
+.праздник-текст{color:var(--muted); font-size:15px; line-height:1.65; max-width:620px}
+
+ul.plain{list-style:none; padding:0; margin:0}
+ul.plain li{position:relative; padding-left:24px; margin-bottom:9px; font-size:14.5px}
+ul.plain li:before{content:''; position:absolute; left:6px; top:9px; width:6px; height:6px;
+  border-radius:50%; background:var(--success)}
+ul.plain.warn-list li:before{background:var(--warning)}
+
+.переключ{display:flex; align-items:center; gap:11px; padding:9px 0; font-size:14.5px; cursor:pointer}
+.переключ input{width:18px; height:18px; margin:0; accent-color:var(--primary)}
+
+.два{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media (max-width:640px){ .два{grid-template-columns:1fr} }
+
+.находки{display:flex; flex-direction:column; gap:4px; margin:-8px 0 14px}
+.находка{display:flex; justify-content:space-between; gap:12px; align-items:baseline; width:100%;
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:9px 13px; text-align:left; font-size:14px}
+.находка:hover{border-color:var(--primary); background:var(--lilac)}
+.находка span{color:var(--muted); font-size:13px}
+.выбран-чел{background:var(--lilac); border:1px solid var(--accent-line); border-radius:10px;
+  padding:10px 14px; margin-bottom:16px; font-size:14.5px}
+
+/* журнал выглядит как журнал: линованная таблица с номерами */
+.журнал{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card); overflow:auto}
+.журнал-таб{width:100%; border-collapse:collapse; font-size:13.5px; min-width:960px}
+.журнал-таб th{background:var(--bg); text-align:left; padding:11px 12px; font-weight:650;
+  color:var(--muted); border-bottom:1.5px solid var(--border); white-space:nowrap}
+.журнал-таб td{padding:10px 12px; border-bottom:1px solid var(--border-soft);
+  border-right:1px solid var(--border-soft); vertical-align:top}
+.журнал-таб td:last-child{border-right:0}
+.журнал-таб th{border-right:1px solid var(--border-soft)}
+.журнал-таб th:last-child{border-right:0}
+.журнал-таб tr.внешн td{background:var(--bg)}
+.журнал-таб tbody tr:hover td{background:var(--lilac)}
+.журнал-таб.печатный{min-width:0; font-size:11.5px}
+.журнал-таб.печатный td, .журнал-таб.печатный th{padding:6px 7px}
+
 /* ---------- добавленные разделы ---------- */
 .pulse{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--success);
   margin-right:7px; box-shadow:0 0 0 0 rgba(5,150,105,.5); animation:пульс 1.8s infinite}
@@ -390,7 +447,8 @@ a.btn{text-decoration:none}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
           <span>Учреждение: <b>ИК-5</b></span>
         </div>
-        <div class="user">
+        <div class="user" onclick="go('profile')" role="button" tabindex="0" title="Открыть профиль"
+             onkeydown="if(event.key==='Enter')go('profile')">
           <div class="avatar" id="avatar">ЕС</div>
           <div>
             <div class="nm" id="userName">Елена Соколова</div>
@@ -651,6 +709,8 @@ const РАЗДЕЛЫ = {
   queue:       [ICON.queue,      'Лента цензуры'],
   archive:     [ICON.archive,    'Архив решений'],
   reports:     [ICON.reports,    'Журналы и отчёты'],
+  register:    [ICON.archive,    'Журнал регистрации'],
+  profile:     [ICON.staff,      'Профиль'],
   feed:        [ICON.feed,       'Персональная лента'],
   people:      [ICON.people,     'Люди и связи'],
   groups:      [ICON.groups,     'Группы и наблюдение'],
@@ -670,7 +730,7 @@ const РАЗДЕЛЫ = {
 
 const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
-                разделы:['queue','assignments','archive','reports','channel','legal','support'] },
+                разделы:['queue','assignments','register','archive','reports','channel','legal','support'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
                 разделы:['feed','assignments','people','groups','opreports','channel','legal','support'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
@@ -741,6 +801,8 @@ function renderQueue(){
   const page = cur.slice(0, S.shown);
 
   document.getElementById('content').innerHTML = `
+    ${блокФразы()}
+
     <div class="page-head head-row">
       <div><h1>Лента цензуры</h1><p>Материалы за смену разложены по трём стопкам. Начните с зелёных.</p></div>
       <div class="head-acts">
@@ -860,6 +922,7 @@ function startGroup(risk){
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button>
     </div>
     <div class="mb">
+      ${deny && !аттестован() ? `<div class="note warn"><b>Акт подпишет аттестованный сотрудник.</b> Решение принимаете вы, но акт уходит на подпись: ${esc(ПОДПИСАНТ.name)}, ${esc(ПОДПИСАНТ.post)}. Печать станет доступна после подписи.</div>` : ''}
       <div class="clist" id="clist">
         ${items.map(x=>`
           <div class="citem" id="ci-${x.id}">
@@ -1317,6 +1380,9 @@ function renderChannel(){
   document.getElementById('content').innerHTML = `
     <div class="page-head"><h1>Канал ОСНОВЫ</h1>
       <p>Сообщения от руководства учреждения и службы сопровождения.</p></div>
+
+    ${блокПраздника()}
+
     ${list.map(m => `
       <div class="card" style="margin-bottom:10px; ${m.pinned ? 'border-color:var(--primary)' : ''}">
         <div style="display:flex; justify-content:space-between; gap:14px; align-items:baseline; flex-wrap:wrap">
@@ -2329,6 +2395,410 @@ function выгрузитьПодборку(id){
       <button class="btn primary" onclick="doPrint()">Печать</button></div>`);
 }
 
+/* ====================================================================
+   ПРОФИЛЬ, ЖУРНАЛ РЕГИСТРАЦИИ, ФРАЗА ДНЯ, ПРАЗДНИКИ
+   ==================================================================== */
+
+/* ---------------- профиль сотрудника ---------------- */
+
+const ПРОФИЛИ = JSON.parse(JSON.stringify(REF.profiles || {}));
+const ПОЛНОМОЧИЯ = REF.powers || { общие: [], аттестованный: [], неаттестованный: [] };
+const ПОДПИСАНТ = REF.signer || { name: '—', post: '—' };
+
+const профиль = () => ПРОФИЛИ[S.role] || {};
+const аттестован = () => !!профиль().attested;
+
+function renderProfile(){
+  const п = профиль();
+  const может = [...ПОЛНОМОЧИЯ.общие, ...(п.attested ? ПОЛНОМОЧИЯ.аттестованный : [])];
+  const нельзя = п.attested ? [] : ПОЛНОМОЧИЯ.неаттестованный;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>${esc(п.name)}</h1>
+      <p>${esc(п.post)} · ${esc(п.facility)}</p></div>
+
+    <div class="split">
+      <div>
+        <div class="card">
+          <h3>Служебные сведения</h3>
+          <div class="kv">
+            <div class="k">Должность</div><div>${esc(п.post)}</div>
+            <div class="k">Статус</div>
+            <div><span class="chip ${п.attested ? 'a' : ''}">${esc(п.employment)}</span></div>
+            ${п.rank ? `<div class="k">Звание</div><div>${esc(п.rank)}</div>` : ''}
+            <div class="k">Табельный номер</div><div>${esc(п.tabNumber)}</div>
+            <div class="k">В учреждении с</div><div>${esc(п.since)}</div>
+            <div class="k">Кабинет</div><div>${esc(п.room)}</div>
+            <div class="k">Телефон</div><div>${esc(п.phone)}</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Что можно</h3>
+          <ul class="plain">${может.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+          ${нельзя.length ? `
+            <h3 style="margin-top:20px">Требует аттестованного сотрудника</h3>
+            <ul class="plain warn-list">${нельзя.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+            <div class="note warn" style="margin-bottom:0">
+              <b>Подписант по умолчанию:</b> ${esc(ПОДПИСАНТ.name)}, ${esc(ПОДПИСАНТ.post)}.
+              Документы уходят ему на подпись автоматически.</div>` : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Аттестация</h3>
+          <div style="color:var(--muted); font-size:14.5px; line-height:1.7">
+            ${п.attested
+              ? 'Аттестованный сотрудник имеет специальное звание внутренней службы и подписывает документы, влекущие правовые последствия: акты об изъятии, мотивированные недопуски, доклады о прекращении разговора.'
+              : 'Вольнонаёмный сотрудник ведёт работу на общих основаниях, но документ, влекущий правовые последствия, подписывает аттестованный сотрудник. Для цензоров это обычная ситуация.'}
+          </div>
+          <div class="note warn" style="margin-bottom:0">Правило о подписи принято как продуктовое решение
+            и требует подтверждения юристом.</div>
+        </div>
+
+        <div class="card">
+          <h3>Настройки</h3>
+          <label class="переключ">
+            <input type="checkbox" ${п.settings && п.settings.phraseOfDay ? 'checked' : ''}
+                   onchange="настройка('phraseOfDay', this.checked)">
+            <span>Показывать фразу дня</span>
+          </label>
+          <label class="переключ">
+            <input type="checkbox" ${п.settings && п.settings.hints ? 'checked' : ''}
+                   onchange="настройка('hints', this.checked)">
+            <span>Показывать подсказки</span>
+          </label>
+        </div>
+
+        <div class="card">
+          <h3>Демонстрация</h3>
+          <div class="top-sub" style="margin-bottom:12px">Переключатель для показа: как рабочее место
+            выглядит у сотрудника с другим статусом. В рабочей системе статус меняет только кадровая служба.</div>
+          <button class="btn" onclick="переключитьАттестацию()">
+            Показать как у ${п.attested ? 'вольнонаёмного' : 'аттестованного'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function настройка(ключ, значение){
+  const п = профиль();
+  п.settings = п.settings || {};
+  п.settings[ключ] = значение;
+  render();
+  toast(значение ? 'Включено' : 'Выключено');
+}
+
+function переключитьАттестацию(){
+  const п = профиль();
+  п.attested = !п.attested;
+  п.employment = п.attested ? 'аттестованный сотрудник' : 'вольнонаёмный сотрудник';
+  п.rank = п.attested ? 'старший лейтенант внутренней службы' : null;
+  render();
+  toast(п.attested ? 'Показано как у аттестованного сотрудника' : 'Показано как у вольнонаёмного');
+}
+
+/* ---------------- фраза дня ---------------- */
+
+function фразаДня(дата){
+  const d = дата ? new Date(дата) : new Date();
+  const привязки = REF.phrasesPinned || {};
+  const мд = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const сГодом = d.getFullYear() + '-' + мд;
+  if (привязки[сГодом]) return привязки[сГодом];
+  if (привязки[мд]) return привязки[мд];
+  const список = REF.phrases || [];
+  if (!список.length) return '';
+  const день = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+  return список[день % список.length];
+}
+
+function блокФразы(){
+  const п = профиль();
+  if (!(п.settings && п.settings.phraseOfDay)) return '';
+  const ф = фразаДня();
+  if (!ф) return '';
+  return `
+    <div class="фраза">
+      <div class="фраза-текст">${esc(ф)}</div>
+      <button class="btn sm" onclick="настройка('phraseOfDay', false)">Отключить</button>
+    </div>`;
+}
+
+/* ---------------- праздники в канале ---------------- */
+
+function праздникДня(дата){
+  const d = дата ? new Date(дата) : new Date();
+  const мд = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const п = REF.holidays || {};
+  return п[d.getFullYear() + '-' + мд] || п[мд] || null;
+}
+
+function ближайшийПраздник(от){
+  const старт = от ? new Date(от) : new Date();
+  for (let i = 1; i <= 366; i++) {
+    const d = new Date(старт.getFullYear(), старт.getMonth(), старт.getDate() + i);
+    const п = праздникДня(d);
+    if (п) return { ...п, дата: d, через: i };
+  }
+  return null;
+}
+
+const МЕСЯЦЫ = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const датаСловами = d => `${d.getDate()} ${МЕСЯЦЫ[d.getMonth()]}`;
+
+function блокПраздника(){
+  const сегодня = праздникДня();
+  const арт = REF.holidayArt || {};
+
+  if (сегодня) return `
+    <div class="праздник">
+      <div class="праздник-арт">${арт[сегодня.img] || ''}</div>
+      <div>
+        <div class="праздник-загл">${esc(сегодня.title)}</div>
+        <div class="праздник-текст">${esc(сегодня.text)}</div>
+      </div>
+    </div>`;
+
+  const б = ближайшийПраздник();
+  if (!б) return '';
+  return `
+    <div class="card" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+      <div style="width:66px; flex:none">${арт[б.img] || ''}</div>
+      <div style="flex:1; min-width:200px">
+        <div style="font-weight:650">Ближайший праздник — ${esc(датаСловами(б.дата))}</div>
+        <div class="top-sub">${esc(б.title)} · через ${б.через} ${склон(б.через, 'день', 'дня', 'дней')}</div>
+      </div>
+      <button class="btn sm" onclick="показатьПраздник('${esc(б.title)}')">Посмотреть поздравление</button>
+    </div>`;
+}
+
+function склон(n, a, b, c){
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return a;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return b;
+  return c;
+}
+
+function показатьПраздник(заголовок){
+  const все = Object.values(REF.holidays || {});
+  const п = все.find(x => x.title === заголовок);
+  if (!п) return;
+  const арт = (REF.holidayArt || {})[п.img] || '';
+  modal(`
+    <div class="mh"><h3>Так это будет выглядеть в праздник</h3>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="праздник">
+        <div class="праздник-арт">${арт}</div>
+        <div>
+          <div class="праздник-загл">${esc(п.title)}</div>
+          <div class="праздник-текст">${esc(п.text)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn primary" onclick="closeModal()">Понятно</button></div>`);
+}
+
+/* ---------------- журнал регистрации корреспонденции ---------------- */
+
+const ЖУРНАЛ = { записи: (ROL.journal || []).map(z => ({ ...z })), выбран: null };
+const ИСТОЧНИКИ = ['сервис ЗТ', 'Почта России', 'нарочным', 'суд', 'прокуратура', 'адвокат', 'администрация', 'иное'];
+const ВИДЫ_КОРР = ['письмо', 'заказное письмо', 'телеграмма', 'бандероль', 'обращение', 'судебный документ', 'иное'];
+const РЕШЕНИЯ_КОРР = ['вручено', 'отправлено', 'не допущено', 'вымарано частично', 'на проверке'];
+
+function renderRegister(){
+  const q = (S.regQuery || '').toLowerCase();
+  const ист = S.regSource || 'all';
+  const все = ЖУРНАЛ.записи;
+  const список = все.filter(z =>
+    (ист === 'all' || z.source === ист) &&
+    (!q || (z.from + ' ' + z.to + ' ' + z.n + ' ' + z.kind).toLowerCase().includes(q)));
+  const внешних = все.filter(z => z.source !== 'сервис ЗТ').length;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head head-row">
+      <div><h1>Журнал регистрации корреспонденции</h1>
+        <p>Вся корреспонденция учреждения — и та, что пришла через сервисы ЗТ, и бумажная из любого источника.</p></div>
+      <div class="head-acts">
+        <button class="btn sm" onclick="печатьЖурнала()">${ICON.printer} Печать для вклейки</button>
+        <button class="btn sm primary" onclick="добавитьЗапись()">Добавить запись</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.reports}</div>
+        <div class="k">Записей в журнале</div><div class="v tnum">${все.length}</div><div class="d">за последние дни</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.channel}</div>
+        <div class="k">Через сервисы ЗТ</div><div class="v tnum">${все.length - внешних}</div>
+        <div class="d">${Math.round((все.length - внешних) / все.length * 100)}% потока</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.archive}</div>
+        <div class="k">Из других источников</div><div class="v tnum">${внешних}</div><div class="d">почта, суд, нарочным</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Не допущено</div><div class="v tnum">${все.filter(z => z.decision === 'не допущено').length}</div>
+        <div class="d">с оформлением акта</div></div>
+    </div>
+
+    <div class="bar">
+      <input id="rq" class="search" placeholder="Поиск по фамилии, номеру или виду" value="${esc(S.regQuery || '')}"
+             oninput="S.regQuery=this.value; renderRegister(); document.getElementById('rq').focus()">
+      <div class="seg">
+        ${['all', ...ИСТОЧНИКИ.slice(0, 4)].map(x =>
+          `<button class="${ист === x ? 'on' : ''}" onclick="S.regSource='${x}'; render()">${x === 'all' ? 'Все' : x}</button>`).join('')}
+      </div>
+      <span class="chip">${список.length} из ${все.length}</span>
+    </div>
+
+    <div class="журнал">
+      <table class="журнал-таб">
+        <thead><tr>
+          <th style="width:58px">№</th><th style="width:88px">Дата</th><th style="width:112px">Источник</th>
+          <th>От кого</th><th>Кому</th><th style="width:120px">Вид</th>
+          <th style="width:44px">Стр.</th><th style="width:130px">Решение</th><th style="width:100px">Подпись</th>
+        </tr></thead>
+        <tbody>
+          ${список.slice(0, 60).map(z => `
+            <tr class="${z.source !== 'сервис ЗТ' ? 'внешн' : ''}">
+              <td class="tnum">${z.n}</td>
+              <td class="tnum">${esc(z.date)}</td>
+              <td>${esc(z.source)}</td>
+              <td>${esc(z.from)}</td>
+              <td>${esc(z.to)}</td>
+              <td>${esc(z.kind)}</td>
+              <td class="tnum">${z.pages}</td>
+              <td><span class="chip ${z.decision === 'не допущено' ? 'r' : z.decision === 'вымарано частично' ? 'o' : z.decision === 'на проверке' ? '' : 'g'}">${esc(z.decision)}</span></td>
+              <td>${esc(z.by)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      ${список.length > 60 ? `<div class="more"><span class="chip">показаны первые 60 из ${список.length}</span></div>` : ''}
+    </div>
+
+    <div class="note">Строки с серой подложкой — корреспонденция, поступившая <b>вне сервисов ЗТ</b>.
+      Она тоже подлежит регистрации, и её вносят вручную.</div>
+  `;
+}
+
+/* --- добавление записи --- */
+
+function добавитьЗапись(){
+  ЖУРНАЛ.выбран = null;
+  const сегодня = new Date();
+  const дата = `${String(сегодня.getDate()).padStart(2,'0')}.${String(сегодня.getMonth()+1).padStart(2,'0')}.${сегодня.getFullYear()}`;
+  modal(`
+    <div class="mh"><div><h3>Новая запись в журнале</h3>
+      <div class="top-sub">Для корреспонденции из любого источника, в том числе бумажной</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="два">
+        <label class="fld">Дата поступления<input id="жДата" value="${дата}"></label>
+        <label class="fld">Источник
+          <select id="жИсточник">${ИСТОЧНИКИ.map(x => `<option>${x}</option>`).join('')}</select></label>
+      </div>
+      <div class="два">
+        <label class="fld">Направление
+          <select id="жНаправление"><option>входящее</option><option>исходящее</option></select></label>
+        <label class="fld">Вид корреспонденции
+          <select id="жВид">${ВИДЫ_КОРР.map(x => `<option>${x}</option>`).join('')}</select></label>
+      </div>
+
+      <label class="fld">Заключённый
+        <input id="жПоиск" placeholder="Начните вводить фамилию" oninput="искатьЧеловека(this.value)" autocomplete="off">
+      </label>
+      <div id="жНайдено" class="находки"></div>
+      <div id="жВыбран" class="выбран-чел" hidden></div>
+
+      <label class="fld">Вторая сторона — от кого или кому
+        <input id="жСторона" placeholder="ФИО отправителя или получателя вне учреждения"></label>
+
+      <div class="два">
+        <label class="fld">Страниц<input id="жСтраниц" value="1" inputmode="numeric"></label>
+        <label class="fld">Решение
+          <select id="жРешение">${РЕШЕНИЯ_КОРР.map(x => `<option>${x}</option>`).join('')}</select></label>
+      </div>
+      <label class="fld">Примечание<input id="жПримечание" placeholder="Необязательно"></label>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьЗапись()">Внести в журнал</button>
+    </div>`);
+}
+
+function искатьЧеловека(q){
+  const узел = document.getElementById('жНайдено');
+  if (!узел) return;
+  const с = (q || '').trim().toLowerCase();
+  if (с.length < 2) { узел.innerHTML = ''; return; }
+  const найдено = POP.люди.filter(p => p.name.toLowerCase().includes(с)).slice(0, 7);
+  узел.innerHTML = найдено.length
+    ? найдено.map(p => `<button class="находка" onclick="выбратьЧеловека('${p.id}')">
+         <b>${esc(p.name)}</b><span>${esc(p.dob)} · ${esc(p.unit)}</span></button>`).join('')
+    : '<div class="top-sub" style="padding:8px 2px">Никого не найдено</div>';
+}
+
+function выбратьЧеловека(id){
+  const p = POP.поId[id]; if (!p) return;
+  ЖУРНАЛ.выбран = p;
+  document.getElementById('жНайдено').innerHTML = '';
+  document.getElementById('жПоиск').value = '';
+  const в = document.getElementById('жВыбран');
+  в.hidden = false;
+  в.innerHTML = `<b>${esc(p.name)}</b> · ${esc(p.dob)} · ${esc(p.unit)}
+    <button class="link" onclick="ЖУРНАЛ.выбран=null; document.getElementById('жВыбран').hidden=true">убрать</button>`;
+}
+
+function сохранитьЗапись(){
+  const v = id => (document.getElementById(id) || {}).value || '';
+  if (!ЖУРНАЛ.выбран) { toast('Выберите заключённого — на кого или от кого корреспонденция'); return; }
+  const сторона = v('жСторона').trim();
+  if (!сторона) { toast('Укажите вторую сторону — отправителя или получателя'); return; }
+
+  const входящее = v('жНаправление') === 'входящее';
+  const макс = ЖУРНАЛ.записи.reduce((m, z) => Math.max(m, z.n), 1000);
+  ЖУРНАЛ.записи.unshift({
+    n: макс + 1,
+    date: v('жДата'),
+    source: v('жИсточник'),
+    dir: v('жНаправление'),
+    from: входящее ? сторона : ЖУРНАЛ.выбран.name,
+    to: входящее ? ЖУРНАЛ.выбран.name : сторона,
+    pid: ЖУРНАЛ.выбран.id,
+    kind: v('жВид'),
+    pages: Math.max(1, parseInt(v('жСтраниц'), 10) || 1),
+    decision: v('жРешение'),
+    by: (профиль().name || '').split(' ').slice(0, 2).map((x, i) => i ? x[0] + '.' : x).join(' '),
+    note: v('жПримечание'),
+    вручную: true,
+  });
+  ЖУРНАЛ.выбран = null;
+  closeModal(); render();
+  toast('Запись внесена в журнал под номером ' + (макс + 1));
+}
+
+function печатьЖурнала(){
+  const строки = ЖУРНАЛ.записи.slice(0, 25);
+  modal(`
+    <div class="mh"><div><h3>Лист журнала для вклейки</h3>
+      <div class="top-sub">ИК-5 · журнал регистрации корреспонденции · записей на листе: ${строки.length}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="print-sheet">
+        <div class="print-head">ЖУРНАЛ РЕГИСТРАЦИИ КОРРЕСПОНДЕНЦИИ · ИК-5 · лист от ${esc(строки[0] ? строки[0].date : '')}</div>
+        <table class="журнал-таб печатный">
+          <thead><tr><th>№</th><th>Дата</th><th>Источник</th><th>От кого</th><th>Кому</th><th>Вид</th><th>Стр.</th><th>Решение</th><th>Подпись</th></tr></thead>
+          <tbody>${строки.map(z => `<tr>
+            <td>${z.n}</td><td>${esc(z.date)}</td><td>${esc(z.source)}</td>
+            <td>${esc(z.from)}</td><td>${esc(z.to)}</td><td>${esc(z.kind)}</td>
+            <td>${z.pages}</td><td>${esc(z.decision)}</td><td>${esc(z.by)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div class="print-foot">Цензор: ${esc(профиль().name || '')} · подпись ________________</div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="doPrint()">Печать</button></div>`);
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -2339,6 +2809,8 @@ function render(){
     assignments: ['Мои поручения', 'Задания от руководства и системы'],
     archive:     ['Архив решений', 'Решённое за смену, с возможностью пересмотра'],
     reports:     ['Журналы и отчёты', 'Электронный журнал и бумажный дубль'],
+    register:    ['Журнал регистрации корреспонденции', 'Вся корреспонденция учреждения, из любого источника'],
+    profile:     ['Профиль сотрудника', 'Служебные сведения и полномочия'],
     channel:     ['Канал ОСНОВЫ', 'Сообщения от руководства и службы сопровождения'],
     legal:       ['Нормативные акты', 'Документы, на которые ссылаются основания'],
     support:     ['Поддержка', 'Если что-то не работает'],
@@ -2364,7 +2836,8 @@ function render(){
      group:renderGroup, opreports:renderOpReports,
      facility:renderFacility, audit:renderAudit, services:renderServices,
      staff:renderStaff, complaints:renderComplaints,
-     live:renderLive, completed:renderCompleted })[S.view]();
+     live:renderLive, completed:renderCompleted,
+     register:renderRegister, profile:renderProfile })[S.view]();
   window.scrollTo({top:0});
 }
 собратьОперативника();
