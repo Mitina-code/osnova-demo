@@ -15,6 +15,7 @@
   --r-card:18px; --r-btn:13px; --r-input:11px;
   --shadow:0 1px 2px rgba(31,41,55,.04), 0 4px 16px rgba(31,41,55,.05);
   --shadow-lift:0 4px 10px rgba(31,41,55,.06), 0 12px 32px rgba(111,61,255,.09);
+  --accent-line:#D6CCFB;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -281,6 +282,7 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
   padding:16px 20px; margin-bottom:20px;
 }
 .фраза-текст{font-size:16px; font-weight:550; color:#3d2b6b; max-width:760px; line-height:1.6}
+.фраза-имя{color:var(--primary); font-weight:650}
 
 .праздник{
   display:flex; align-items:center; gap:20px; flex-wrap:wrap;
@@ -2510,8 +2512,24 @@ function фразаДня(дата){
   if (привязки[мд]) return привязки[мд];
   const список = REF.phrases || [];
   if (!список.length) return '';
-  const день = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
-  return список[день % список.length];
+  const день = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);   // 1..366
+  return список[(день - 1) % список.length];
+}
+
+/* «Соколова Елена Сергеевна» → «Елена Сергеевна» */
+function имяОтчество(фио){
+  const ч = String(фио || '').trim().split(/[ ]+/);
+  return ч.length >= 3 ? ч[1] + ' ' + ч[2] : (ч[1] || ч[0] || '');
+}
+
+/* Фраза со строчной буквы — продолжение обращения, с прописной — сама по себе. */
+function текстФразы(ф, п){
+  const первая = String(ф).charAt(0);
+  const нужноОбращение = первая && первая === первая.toLowerCase() && первая !== первая.toUpperCase();
+  const ио = имяОтчество(п.name);
+  return (нужноОбращение && ио)
+    ? `<span class="фраза-имя">${esc(ио)}</span>, ${esc(ф)}`
+    : esc(ф);
 }
 
 function блокФразы(){
@@ -2521,7 +2539,7 @@ function блокФразы(){
   if (!ф) return '';
   return `
     <div class="фраза">
-      <div class="фраза-текст">${esc(ф)}</div>
+      <div class="фраза-текст">${текстФразы(ф, п)}</div>
       <button class="btn sm" onclick="настройка('phraseOfDay', false)">Отключить</button>
     </div>`;
 }
