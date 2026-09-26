@@ -380,6 +380,38 @@ h2.sect{font-size:21px; font-weight:700; margin:30px 0 14px; letter-spacing:-.3p
 .glue-row:last-child{border-bottom:0}
 .glue-row span{overflow-wrap:anywhere}
 
+/* ---------- БЛАНК ДОКУМЕНТА (акт, реестр) ----------
+   Оформление по ГОСТ Р 7.0.97-2016. На экране это предпросмотр,
+   на бумаге — готовый к подписи документ: один акт = один лист. */
+.бланк{
+  background:#fff; color:#000; font-size:13.5px; line-height:1.5;
+  padding:26px 28px; border:1px solid var(--border); border-radius:12px;
+}
+.бланк + .бланк{margin-top:16px}
+.бл-верх{display:grid; grid-template-columns:1fr 1fr; gap:28px; align-items:start; margin-bottom:22px}
+.бл-орг{font-size:11.5px; line-height:1.35; text-transform:uppercase; letter-spacing:.2px}
+.бл-утв{font-size:12.5px; line-height:1.7}
+.бл-подп{letter-spacing:1px}
+.бл-вид{text-align:center; font-size:17px; font-weight:700; letter-spacing:2px; margin:18px 0 10px}
+.бл-рек{display:flex; justify-content:space-between; font-size:13px}
+.бл-место{font-size:13px; margin-top:2px}
+.бл-загол{margin:16px 0 18px; font-size:13.5px; line-height:1.45}
+.бл-абз{margin:0 0 12px; text-align:justify}
+.бл-подзаг{font-weight:650; margin:16px 0 8px}
+.бл-свед{display:grid; grid-template-columns:200px 1fr; gap:4px 14px; margin-bottom:14px}
+.бл-к{color:#333}
+.бл-к:after{content:' ....................................................'; color:#999; letter-spacing:-1px}
+.бл-з{font-weight:550}
+.бл-подписи{margin-top:20px}
+.бл-подпись{display:grid; grid-template-columns:1fr 150px 130px; gap:14px; align-items:end; margin-bottom:6px}
+.бл-линия{border-bottom:1px solid #000; height:14px}
+.бл-имя{text-align:right}
+.бл-дата{margin-top:10px; font-size:13px}
+.бл-сноска{margin-top:16px; font-size:11.5px; color:#444; font-style:italic}
+.бл-таб{width:100%; border-collapse:collapse; font-size:11.5px; table-layout:fixed; margin:14px 0}
+.бл-таб th, .бл-таб td{border:1px solid #000; padding:5px 6px; vertical-align:top; overflow-wrap:anywhere}
+.бл-таб th{font-weight:650; text-align:center; background:#f2f2f2}
+
 /* предпросмотр печати материала */
 .print-sheet{border:1px solid var(--border); border-radius:12px; padding:22px 24px; background:var(--surface); line-height:1.7}
 .print-head{font-size:13px; color:var(--muted); border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px}
@@ -420,6 +452,10 @@ a.btn{text-decoration:none}
   #printRoot h3{margin:10px 0 6px}
   #printRoot tr, #printRoot .row, #printRoot .entry,
   #printRoot .card, #printRoot .glue-row{break-inside:avoid}
+  #printRoot .бланк{border:0; border-radius:0; padding:0; font-size:11pt; break-after:page}
+  #printRoot .бланк.последний{break-after:auto}
+  #printRoot .бланк + .бланк{margin-top:0}
+  #printRoot .бл-таб{font-size:8.5pt}
 }
 
 /* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
@@ -629,6 +665,8 @@ function loadQueue(setName) {
 }
 
 let RULES_TOTAL = 0;
+/* Акт получает номер в момент решения о недопуске и больше не меняется. */
+let ACT_NO = 2100;
 /* ---------------- состояние ---------------- */
 const S = {
   view:'queue',
@@ -992,7 +1030,8 @@ function commitGroup(risk){
       id:x.id, from:x.from, to:x.to,
       decision: deny?'deny':'allow',
       basis: deny ? x.full : 'анализатор не выявил признаков, резюме просмотрено',
-      by:'Соколова Е.С., цензор', at:nowStamp(), group:n
+      by:'Соколова Е.С., цензор', at:nowStamp(), group:n,
+      act: deny ? String(++ACT_NO) : null
     });
   });
   DROPPED=new Set(); closeModal(); render();
@@ -1081,7 +1120,8 @@ function decide(id, what, cut){
     basis: what==='deny' ? x.full
          : what==='partial' ? `вымарано фрагментов: ${cut}; остальное пропущено`
          : (x.sample ? 'точечный контроль: решение анализатора подтверждено цензором' : 'материал просмотрен, признаков нарушения не выявлено'),
-    by:'Соколова Е.С., цензор', at:nowStamp(), group:1
+    by:'Соколова Е.С., цензор', at:nowStamp(), group:1,
+    act: what === 'deny' ? String(++ACT_NO) : null
   });
   const label = what==='allow'?'Разрешено': what==='deny'?'Не допущено':'Пропущено с изъятием фрагментов';
   // конвейер: сразу следующий
@@ -1368,19 +1408,36 @@ function openGlue(){
 function openActs(){
   const acts = S.log.filter(e => e.decision === 'deny');
   modal(`
-    <div class="mh"><div><h3>Реестр актов об изъятии</h3>
-      <div class="top-sub">Актов: ${acts.length}. Формируются автоматически при недопуске.</div></div>
+    <div class="mh"><div><h3>Акты о недопуске</h3>
+      <div class="top-sub">Актов за смену: ${acts.length}. Каждый печатается отдельным листом.</div></div>
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">${acts.length
       ? `<div class="clist">${acts.slice(0, 60).map(e => `
           <div class="citem"><div>
-            <div class="w">${esc(e.from)} → ${esc(e.to)}</div>
+            <div class="w">Акт № ${esc(e.act || '—')} · ${esc(e.from)} → ${esc(e.to)}</div>
             <div class="s">${esc(e.id)} · ${esc(e.at)} · ${esc(e.basis)}</div>
-          </div><button class="btn sm" onclick="doPrint()">Печать акта</button></div>`).join('')}</div>`
+          </div><div style="display:flex; gap:8px">
+            <button class="btn sm" onclick="предпросмотрАкта('${e.id}')">Посмотреть</button>
+            <button class="btn sm primary" onclick="печатьОдногоАкта('${e.id}')">Печать акта</button>
+          </div></div>`).join('')}</div>
+         ${acts.length > 60 ? `<div class="top-sub" style="margin-top:10px">В списке первые 60; печать охватит все ${acts.length}.</div>` : ''}`
       : '<div class="top-sub">Недопущенных материалов за смену нет.</div>'}
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
-      ${acts.length ? '<button class="btn primary" onclick="doPrint()">Печать всех</button>' : ''}</div>`);
+      ${acts.length ? `<button class="btn" onclick="печатьРеестраАктов()">${ICON.reports} Печать реестра</button>
+        <button class="btn primary" onclick="печатьВсехАктов()">${ICON.printer} Печать всех актов · ${acts.length}</button>` : ''}</div>`);
+}
+
+/* Отдельное окно с бланком: увидеть документ до того, как он уйдёт на бумагу. */
+function предпросмотрАкта(id){
+  const e = S.log.find(x => x.id === id); if (!e) return;
+  modal(`
+    <div class="mh"><div><h3>Акт № ${esc(e.act || '—')}</h3>
+      <div class="top-sub">Так он выйдет на печать</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">${бланкАкта(актИзЖурнала(e), true)}</div>
+    <div class="mf"><button class="btn" onclick="openActs()">Назад к списку</button>
+      <button class="btn primary" onclick="печатьОдногоАкта('${e.id}')">${ICON.printer} Печать</button></div>`);
 }
 
 function openDayReport(){
@@ -2990,29 +3047,7 @@ function открытьАкт(id){
         <div class="top-sub">Материал ${esc(a.material)} · поступил ${esc(a.at)}</div></div>
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">
-      <div class="print-sheet">
-        <div class="print-head">
-          ИК-5 · Северный территориальный орган<br>
-          Акт о недопуске к вручению (отправке) ${esc(a.id)}
-        </div>
-        <div class="kv">
-          <div class="k">Кому адресовано</div><div>${esc(a.dir === 'входящее' ? a.person : a.counterpart)}</div>
-          <div class="k">От кого</div><div>${esc(a.dir === 'входящее' ? a.counterpart : a.person)}</div>
-          <div class="k">Отряд</div><div>${esc(a.unit)}</div>
-          <div class="k">Вид отправления</div><div>${esc(a.channel)}, ${esc(a.dir)}</div>
-          <div class="k">Основание</div><div>${esc(a.norm)}</div>
-        </div>
-        <div class="print-body">
-          <b>Установлено:</b> ${esc(a.ground)}.<br>
-          ${esc(a.reason)}
-        </div>
-        <div class="print-foot">
-          Подготовила: ${esc(a.by)}, ${esc(a.byPost)}.<br>
-          ${a.status === 'signed'
-            ? 'Подписал: ' + esc(ПОДПИСАНТ.name) + ', ' + esc(ПОДПИСАНТ.post) + '.'
-            : 'Подпись аттестованного сотрудника: __________________ ' + esc(ПОДПИСАНТ.name)}
-        </div>
-      </div>
+      ${бланкАкта(актИзОчереди(a), true)}
       ${a.status === 'waiting' ? `
         <div class="note">Подписывая акт, вы удостоверяете основание недопуска.
           Если мотивировка недостаточна, верните акт на доработку — срок при этом не останавливается.</div>` : ''}
@@ -3021,7 +3056,7 @@ function открытьАкт(id){
       ${a.status === 'waiting'
         ? `<button class="btn" onclick="вернутьАкт('${a.id}')">Вернуть на доработку</button>
            <button class="btn primary" onclick="подписатьАкт('${a.id}')">Подписать</button>`
-        : `<button class="btn" onclick="doPrint()">${ICON.printer} Печать</button>
+        : `<button class="btn" onclick="печатьАктаОчереди('${a.id}')">${ICON.printer} Печать</button>
            <button class="btn primary" onclick="closeModal()">Закрыть</button>`}
     </div>`);
 }
@@ -3200,6 +3235,273 @@ function докладНаверх(){
       <button class="btn" onclick="closeModal()">Закрыть</button>
       <button class="btn primary" onclick="doPrint()">${ICON.printer} Печать</button>
     </div>`);
+}
+
+/* ====================================================================
+   АКТ О НЕДОПУСКЕ И РЕЕСТР АКТОВ — бланки документов
+
+   Акт оформляется как организационно-распорядительный документ по
+   ГОСТ Р 7.0.97-2016. Состав реквизитов:
+     08 — наименование организации (с вышестоящей);
+     10 — наименование вида документа (АКТ);
+     11 — дата документа;
+     12 — регистрационный номер;
+     13 — место составления;
+     16 — гриф утверждения (начальник учреждения, справа вверху);
+     17 — заголовок к тексту;
+     18 — текст (вводная часть: основание и кто составил; констатирующая);
+     22 — подпись;
+     отметка об ознакомлении — внизу, под расписку.
+
+   Существо — статья 91 УИК РФ и Правила внутреннего распорядка
+   исправительных учреждений (приказ Минюста России от 04.07.2022 № 110).
+   Номер конкретного пункта ПВР в бланк не подставляется: он должен быть
+   выверен юристом учреждения и хранится в данных (поле norm).
+
+   Печать: один акт — один лист. Реестр — отдельный документ.
+   ==================================================================== */
+
+/* «Саидов Бахром Анварович» → «Б.А. Саидов» */
+function инициалы(фио){
+  const ч = String(фио || '').trim().split(/\s+/);
+  if (ч.length >= 3) return ч[1][0] + '.' + ч[2][0] + '. ' + ч[0];
+  if (ч.length === 2) return ч[1][0] + '. ' + ч[0];
+  return ч[0] || '';
+}
+
+const ЕДИНИЦЫ = ['ноль','один','два','три','четыре','пять','шесть','семь','восемь','девять',
+  'десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать',
+  'шестнадцать','семнадцать','восемнадцать','девятнадцать'];
+const ДЕСЯТКИ = ['','','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто'];
+const СОТНИ = ['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот'];
+
+/* Число прописью — в документах количество дублируется словами. */
+function числоПрописью(n){
+  n = Math.floor(Math.abs(Number(n) || 0));
+  if (n > 999) return String(n);
+  const с = СОТНИ[Math.floor(n / 100)];
+  const о = n % 100;
+  const х = о < 20 ? ЕДИНИЦЫ[о]
+    : (ДЕСЯТКИ[Math.floor(о / 10)] + (о % 10 ? ' ' + ЕДИНИЦЫ[о % 10] : ''));
+  return [с, о ? х : (n ? '' : ЕДИНИЦЫ[0])].filter(Boolean).join(' ');
+}
+
+/* Дата документа — та же, что у смены в шапке прототипа. */
+const ДАТА_СМЕНЫ = '28.08.2026';
+function сегодняДок(){ return ДАТА_СМЕНЫ; }
+
+/* ---------- приведение к единому виду ----------
+   Акт печатают из двух мест: цензор из журнала решений и начальник
+   из очереди на подпись. Данные разные, бланк один. */
+
+function актИзЖурнала(e){
+  const m = S.queue.find(x => x.id === e.id) || {};
+  const чел = m.pid ? POP.поId[m.pid] : null;
+  const входящее = String(m.dir || '').toLowerCase().indexOf('вход') === 0;
+  return {
+    номер: e.act || '—',
+    дата: сегодняДок(),
+    регНомер: e.id,
+    поступило: m.at ? ДАТА_СМЕНЫ + ' ' + m.at : '—',
+    вид: m.channel || 'письмо',
+    направление: входящее ? 'входящее' : 'исходящее',
+    отправитель: e.from,
+    получатель: e.to,
+    осуждённый: чел ? чел.name : (входящее ? e.to : e.from),
+    отряд: m.unit || '—',
+    норма: 'статья 91 Уголовно-исполнительного кодекса Российской Федерации; '
+         + 'Правила внутреннего распорядка исправительных учреждений, утверждённые '
+         + 'приказом Минюста России от 04.07.2022 № 110',
+    установлено: m.sum || e.basis,
+    мотив: m.full || e.basis,
+    составилДолжность: 'Цензор',
+    составил: профиль().name,
+  };
+}
+
+function актИзОчереди(a){
+  const входящее = a.dir === 'входящее';
+  return {
+    номер: a.id.replace(/^АКТ-/, ''),
+    дата: сегодняДок(),
+    регНомер: a.material,
+    поступило: a.at,
+    вид: a.channel,
+    направление: a.dir,
+    отправитель: входящее ? a.counterpart : a.person,
+    получатель: входящее ? a.person : a.counterpart,
+    осуждённый: a.person,
+    отряд: a.unit,
+    норма: 'статья 91 Уголовно-исполнительного кодекса Российской Федерации; '
+         + 'Правила внутреннего распорядка исправительных учреждений, утверждённые '
+         + 'приказом Минюста России от 04.07.2022 № 110',
+    установлено: a.ground,
+    мотив: a.reason,
+    составилДолжность: 'Цензор',
+    составил: 'Соколова Елена Сергеевна',
+  };
+}
+
+/* ---------- сам бланк ---------- */
+
+function бланкАкта(д, последний){
+  const ф = ROL.facility || {};
+  const строка = (к, з) => `<div class="бл-к">${esc(к)}</div><div class="бл-з">${esc(з)}</div>`;
+  return `
+  <div class="бланк${последний ? ' последний' : ''}">
+    <div class="бл-верх">
+      <div class="бл-орг">
+        ФЕДЕРАЛЬНАЯ СЛУЖБА ИСПОЛНЕНИЯ НАКАЗАНИЙ<br>
+        ${esc(ф.parent || '')}<br>
+        ${esc(ф.full || '')}<br>
+        (${esc(ф.short || '')})
+      </div>
+      <div class="бл-утв">
+        УТВЕРЖДАЮ<br>
+        Начальник ${esc(ф.short || '')}<br>
+        <span class="бл-подп">_______________</span> ${esc(инициалы(ПОДПИСАНТ.name))}<br>
+        «____» ____________ 2026 г.
+      </div>
+    </div>
+
+    <div class="бл-вид">АКТ</div>
+
+    <div class="бл-рек">
+      <span>${esc(д.дата)}</span>
+      <span>№ ${esc(д.номер)}</span>
+    </div>
+    <div class="бл-место">${esc(ф.city || '')}</div>
+
+    <div class="бл-загол">о недопуске почтового отправления<br>к вручению (отправке)</div>
+
+    <p class="бл-абз"><b>Основание:</b> ${esc(д.норма)}.</p>
+
+    <p class="бл-абз"><b>Акт составил:</b> ${esc(д.составилДолжность.toLowerCase())}
+      ${esc(ф.short || '')} ${esc(д.составил)}.</p>
+
+    <div class="бл-подзаг">Сведения о почтовом отправлении</div>
+    <div class="бл-свед">
+      ${строка('Регистрационный номер', д.регНомер)}
+      ${строка('Дата поступления', д.поступило)}
+      ${строка('Вид отправления', д.вид)}
+      ${строка('Направление', д.направление)}
+      ${строка('Отправитель', д.отправитель)}
+      ${строка('Адресат', д.получатель)}
+      ${строка('Отряд осуждённого', д.отряд)}
+    </div>
+
+    <p class="бл-абз"><b>Установлено:</b> ${esc(д.установлено)}. ${esc(д.мотив)}</p>
+
+    <p class="бл-абз"><b>Решение:</b> почтовое отправление адресату не вручать
+      (не отправлять), изъять и приобщить к личному делу осуждённого.</p>
+
+    <div class="бл-подписи">
+      <div class="бл-подпись">
+        <span class="бл-кто">${esc(д.составилДолжность)} ${esc(ф.short || '')}</span>
+        <span class="бл-линия"></span>
+        <span class="бл-имя">${esc(инициалы(д.составил))}</span>
+      </div>
+    </div>
+
+    <p class="бл-абз" style="margin-top:18px">Настоящий акт мне объявлен,
+      порядок обжалования разъяснён:</p>
+
+    <div class="бл-подписи">
+      <div class="бл-подпись">
+        <span class="бл-кто">Осуждённый</span>
+        <span class="бл-линия"></span>
+        <span class="бл-имя">${esc(инициалы(д.осуждённый))}</span>
+      </div>
+      <div class="бл-дата">«____» ____________ 2026 г.</div>
+    </div>
+
+    <div class="бл-сноска">В случае отказа осуждённого от подписи в акте
+      делается соответствующая отметка за подписью составившего акт.</div>
+  </div>`;
+}
+
+/* ---------- реестр актов: тоже документ ---------- */
+
+function реестрАктовДок(список){
+  const ф = ROL.facility || {};
+  return `
+  <div class="бланк последний">
+    <div class="бл-верх">
+      <div class="бл-орг">
+        ${esc(ф.parent || '')}<br>
+        ${esc(ф.full || '')}<br>
+        (${esc(ф.short || '')})
+      </div>
+      <div class="бл-утв">
+        УТВЕРЖДАЮ<br>
+        Начальник ${esc(ф.short || '')}<br>
+        <span class="бл-подп">_______________</span> ${esc(инициалы(ПОДПИСАНТ.name))}<br>
+        «____» ____________ 2026 г.
+      </div>
+    </div>
+
+    <div class="бл-вид">РЕЕСТР</div>
+    <div class="бл-загол" style="text-align:center">актов о недопуске почтовых отправлений<br>
+      за ${esc(сегодняДок())}</div>
+
+    <table class="бл-таб">
+      <colgroup><col style="width:6%"><col style="width:11%"><col style="width:13%">
+        <col style="width:26%"><col style="width:9%"><col style="width:21%"><col style="width:14%"></colgroup>
+      <thead><tr>
+        <th>№ п/п</th><th>№ акта</th><th>Рег. №</th>
+        <th>Осуждённый</th><th>Отряд</th><th>Установлено</th><th>Подпись осуждённого</th>
+      </tr></thead>
+      <tbody>
+        ${список.map((д, i) => `<tr>
+          <td>${i + 1}</td>
+          <td>${esc(д.номер)}</td>
+          <td>${esc(д.регНомер)}</td>
+          <td>${esc(д.осуждённый)}</td>
+          <td>${esc(д.отряд)}</td>
+          <td>${esc(д.установлено)}</td>
+          <td></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <p class="бл-абз">Всего актов: ${список.length} (${числоПрописью(список.length)}).</p>
+
+    <div class="бл-подписи" style="margin-top:26px">
+      <div class="бл-подпись">
+        <span class="бл-кто">Цензор ${esc(ф.short || '')}</span>
+        <span class="бл-линия"></span>
+        <span class="бл-имя">${esc(инициалы(профиль().name))}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- печать ---------- */
+
+function печатьОдногоАкта(id){
+  const e = S.log.find(x => x.id === id);
+  if (!e) { toast('Запись не найдена'); return; }
+  печатьДокумента(бланкАкта(актИзЖурнала(e), true));
+}
+
+function печатьВсехАктов(){
+  const акты = S.log.filter(e => e.decision === 'deny');
+  if (!акты.length) { toast('Актов за смену нет'); return; }
+  const html = акты.map((e, i) => бланкАкта(актИзЖурнала(e), i === акты.length - 1)).join('');
+  печатьДокумента(html);
+}
+
+function печатьРеестраАктов(){
+  const акты = S.log.filter(e => e.decision === 'deny');
+  if (!акты.length) { toast('Актов за смену нет'); return; }
+  печатьДокумента(реестрАктовДок(акты.map(актИзЖурнала)));
+}
+
+/* Начальник печатает акт из очереди на подпись — бланк тот же. */
+function печатьАктаОчереди(id){
+  const a = АКТЫ.find(x => x.id === id);
+  if (!a) return;
+  печатьДокумента(бланкАкта(актИзОчереди(a), true));
 }
 
 /* ---------------- маршрутизация ---------------- */
