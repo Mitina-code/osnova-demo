@@ -713,6 +713,7 @@ const РАЗДЕЛЫ = {
   reports:     [ICON.reports,    'Журналы и отчёты'],
   register:    [ICON.archive,    'Журнал регистрации'],
   profile:     [ICON.staff,      'Профиль'],
+  signing:     [ICON.legal,      'Акты на подпись'],
   feed:        [ICON.feed,       'Персональная лента'],
   people:      [ICON.people,     'Люди и связи'],
   groups:      [ICON.groups,     'Группы и наблюдение'],
@@ -736,7 +737,7 @@ const РОЛИ = {
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
                 разделы:['feed','assignments','people','groups','opreports','channel','legal','support'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
-                разделы:['facility','assignments','audit','services','staff','complaints','channel','legal','support'] },
+                разделы:['facility','signing','assignments','audit','services','staff','complaints','channel','legal','support'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
                 разделы:['live','completed','assignments','channel','legal','support'] },
 };
@@ -762,6 +763,7 @@ function renderNav(){
     live: LIVE.calls.filter(c=>!c.ended).length,
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
     staff: LIVE.staff.filter(x=>x.review).length,
+    signing: актовЖдёт(),
     complaints: LIVE.complaints.filter(c=>c.status!=='закрыто').length,
   };
   document.getElementById('nav').innerHTML = роль.разделы.map(v => {
@@ -824,9 +826,8 @@ function renderQueue(){
         ${Object.keys(SETS).map(k=>`<button class="${S.set===k?'on':''}" onclick="setSet('${k}')">${SETS[k]}</button>`).join('')}
       </div>
       <span class="lab" style="margin-left:12px">Режим доверия:</span>
-      <div class="seg">
-        ${['full','half','manual'].map(t=>`<button class="${S.trust===t?'on':''}" onclick="setTrust('${t}')">${TRUST_LABEL[t]}</button>`).join('')}
-      </div>
+      <span class="chip a" title="Режим назначает начальник учреждения">${TRUST_LABEL[S.trust]}</span>
+      <span class="lab">назначен по учреждению</span>
     </div>
 
     <div class="tabs">
@@ -1962,8 +1963,13 @@ function renderFacility(){
   const доля = n => (n / св.всего * 100).toFixed(0) + '%';
   const срочных = LIVE.audit.filter(a => a.level === 'red').length;
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Состояние учреждения</h1>
-      <p>${esc(ф.name)} · ${esc(ф.region)}. Только то, что требует решения.</p></div>
+    <div class="page-head head-row">
+      <div><h1>Состояние учреждения</h1>
+        <p>${esc(ф.name)} · ${esc(ф.region)}. Только то, что требует решения.</p></div>
+      <div class="head-acts">
+        <button class="btn" onclick="докладНаверх()">${ICON.reports} Доклад в территориальный орган</button>
+      </div>
+    </div>
 
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
@@ -1971,11 +1977,12 @@ function renderFacility(){
         <div class="d">сегодня</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.queue}</div>
         <div class="k">Замечаний самоаудита</div><div class="v tnum">${срочных}</div><div class="d">срочных</div></div>
-      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.tasks}</div>
-        <div class="k">Некомплект штата</div><div class="v tnum">${Math.round(ф.staffShortage/ф.staffTotal*100)}%</div>
-        <div class="d">${ф.staffShortage} из ${ф.staffTotal} ставок</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.legal}</div>
+        <div class="k">Актов на вашей подписи</div><div class="v tnum">${актовЖдёт()}</div>
+        <div class="d">${актовПросрочено() ? 'просрочено ' + актовПросрочено() : 'в срок'}</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
-        <div class="k">Заключённых</div><div class="v tnum">${ф.inmates}</div><div class="d">на контуре связи</div></div>
+        <div class="k">На контуре связи</div><div class="v tnum">${св.активныеЗТ}</div>
+        <div class="d">из ${св.всего} человек</div></div>
     </div>
 
     <h2 class="sect">Требует вашего решения</h2>
@@ -2002,6 +2009,10 @@ function renderFacility(){
       <div class="note warn" style="margin-bottom:0">Каждый третий — иностранный гражданин. Их переписка требует перевода,
         а контакты чаще не подтверждены: это самая тяжёлая для цензора часть потока.</div>
     </div>
+
+    ${блокПропускной()}
+
+    ${блокНагрузки()}
 
     <div class="note" style="margin-top:20px">Сводка не показывает то, что идёт нормально.
       Если раздел пуст — значит, вмешательства не требуется.</div>
@@ -2817,6 +2828,331 @@ function печатьЖурнала(){
       <button class="btn primary" onclick="doPrint()">Печать</button></div>`);
 }
 
+/* ====================================================================
+   НАЧАЛЬНИК УЧРЕЖДЕНИЯ
+
+   Три вещи, которые может решить только он и никто другой:
+     1. подписать акт недопуска, подготовленный вольнонаёмным цензором;
+     2. назначить режим доверия — это решение о пропускной способности
+        учреждения, а не настройка чужого рабочего места;
+     3. распорядиться людьми там, где некомплект бьёт по срокам.
+
+   Расчёт нагрузки берётся из данных (ROL.throughput) и совпадает
+   с «Экономикой смены» в спеке. Числа лежат в одном месте, чтобы экран
+   и документ не разошлись.
+   ==================================================================== */
+
+const ПРОП = ROL.throughput || null;
+const НАГРУЗКА_УЧАСТКОВ = ROL.workload || [];
+const АКТЫ = ROL.acts || [];
+
+/* Сколько минут займёт объём за трёхдневное окно при заданном режиме. */
+function минутыЗаОкно(объём, режим){
+  if (!ПРОП) return 0;
+  const с = ПРОП.секунды[режим] || ПРОП.секунды.manual;
+  const д = ПРОП.доли;
+  const зел = объём * д.green, ор = объём * д.orange, кр = объём * д.red;
+  const выборка = с.sample ? зел * ПРОП.выборка * с.sample : 0;
+  return Math.round((зел * с.green + ор * с.orange + кр * с.red + выборка) / 60);
+}
+function доляБюджета(мин){ return ПРОП ? Math.round(мин / ПРОП.бюджетМин * 100) : 0; }
+
+/* Объём окна: сегодняшний набор плюс два обычных дня. */
+function объёмОкна(){ return S.total + 200 * 2; }
+
+function актовЖдёт(){ return АКТЫ.filter(a => a.status === 'waiting').length; }
+function актовПросрочено(){ return АКТЫ.filter(a => a.status === 'waiting' && a.overdue).length; }
+
+function склАкт(n){
+  const о = n % 10, с = n % 100;
+  if (о === 1 && с !== 11) return 'акт';
+  if (о >= 2 && о <= 4 && (с < 12 || с > 14)) return 'акта';
+  return 'актов';
+}
+
+/* ---------------- акты на подпись ---------------- */
+
+function renderSigning(){
+  const ждут = АКТЫ.filter(a => a.status === 'waiting');
+  const решённые = АКТЫ.filter(a => a.status !== 'waiting');
+  const просрочено = ждут.filter(a => a.overdue).length;
+
+  const карточка = a => `
+    <div class="row">
+      <div class="stripe ${a.overdue ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(a.person)}</div>
+        <div class="meta">${esc(a.unit)} · ${esc(a.dir)} ${esc(a.channel)} · ${esc(a.counterpart)}</div>
+        <div class="marks">
+          <span class="chip">${esc(a.id)}</span>
+          <span class="chip ${a.overdue ? 'r' : 'o'}">${esc(a.due)}</span>
+          <span class="chip">подготовила ${esc(a.by)}</span>
+        </div>
+      </div>
+      <div>
+        <div class="sum">${esc(a.ground)}</div>
+        <div class="why">${esc(a.norm)}</div>
+      </div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button>
+        <button class="btn sm primary" onclick="подписатьАкт('${a.id}')">Подписать</button>
+      </div>
+    </div>`;
+
+  const решённая = a => `
+    <div class="row">
+      <div class="stripe ${a.status === 'signed' ? 'g' : 'o'}"></div>
+      <div><div class="who">${esc(a.person)}</div>
+        <div class="meta">${esc(a.id)} · ${esc(a.ground)}</div></div>
+      <div><div class="sum">${a.status === 'signed' ? 'Подписан' : 'Возвращён на доработку'}</div>
+        ${a.note ? `<div class="why">${esc(a.note)}</div>` : ''}</div>
+      <div class="acts"><button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button></div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head head-row">
+      <div><h1>Акты на подпись</h1>
+        <p>Решение о недопуске принимает цензор. Акт подписывает аттестованный сотрудник — это вы.</p></div>
+      ${ждут.length ? `<div class="head-acts">
+        <button class="btn" onclick="подписатьВсе()">${ICON.check} Подписать все</button></div>` : ''}
+    </div>
+
+    ${просрочено ? `<div class="note warn"><b>Просрочено: ${просрочено}.</b>
+      Пока акт не подписан, недопуск не оформлен: материал задержан, а документального основания нет.
+      Это первое, что смотрят при проверке.</div>` : ''}
+
+    <h2 class="sect">Ждут подписи · ${ждут.length}</h2>
+    ${ждут.length
+      ? `<div class="rows">${ждут.map(карточка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Неподписанных актов нет</b>
+         <div>Всё оформлено в срок.</div></div>`}
+
+    ${решённые.length ? `<h2 class="sect">Рассмотрено · ${решённые.length}</h2>
+      <div class="rows">${решённые.map(решённая).join('')}</div>` : ''}
+  `;
+}
+
+function открытьАкт(id){
+  const a = АКТЫ.find(x => x.id === id); if (!a) return;
+  modal(`
+    <div class="mh">
+      <div><h3>${esc(a.id)} · акт о недопуске</h3>
+        <div class="top-sub">Материал ${esc(a.material)} · поступил ${esc(a.at)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="print-sheet">
+        <div class="print-head">
+          ИК-5 · Северный территориальный орган<br>
+          Акт о недопуске к вручению (отправке) ${esc(a.id)}
+        </div>
+        <div class="kv">
+          <div class="k">Кому адресовано</div><div>${esc(a.dir === 'входящее' ? a.person : a.counterpart)}</div>
+          <div class="k">От кого</div><div>${esc(a.dir === 'входящее' ? a.counterpart : a.person)}</div>
+          <div class="k">Отряд</div><div>${esc(a.unit)}</div>
+          <div class="k">Вид отправления</div><div>${esc(a.channel)}, ${esc(a.dir)}</div>
+          <div class="k">Основание</div><div>${esc(a.norm)}</div>
+        </div>
+        <div class="print-body">
+          <b>Установлено:</b> ${esc(a.ground)}.<br>
+          ${esc(a.reason)}
+        </div>
+        <div class="print-foot">
+          Подготовила: ${esc(a.by)}, ${esc(a.byPost)}.<br>
+          ${a.status === 'signed'
+            ? 'Подписал: ' + esc(ПОДПИСАНТ.name) + ', ' + esc(ПОДПИСАНТ.post) + '.'
+            : 'Подпись аттестованного сотрудника: __________________ ' + esc(ПОДПИСАНТ.name)}
+        </div>
+      </div>
+      ${a.status === 'waiting' ? `
+        <div class="note">Подписывая акт, вы удостоверяете основание недопуска.
+          Если мотивировка недостаточна, верните акт на доработку — срок при этом не останавливается.</div>` : ''}
+    </div>
+    <div class="mf">
+      ${a.status === 'waiting'
+        ? `<button class="btn" onclick="вернутьАкт('${a.id}')">Вернуть на доработку</button>
+           <button class="btn primary" onclick="подписатьАкт('${a.id}')">Подписать</button>`
+        : `<button class="btn" onclick="window.print()">${ICON.printer} Печать</button>
+           <button class="btn primary" onclick="closeModal()">Закрыть</button>`}
+    </div>`);
+}
+
+function подписатьАкт(id){
+  const a = АКТЫ.find(x => x.id === id); if (!a) return;
+  a.status = 'signed'; a.overdue = false; a.note = '';
+  closeModal(); render();
+  toast('Акт ' + a.id + ' подписан. Недопуск оформлен, уведомление уйдёт адресату.');
+}
+function вернутьАкт(id){
+  const a = АКТЫ.find(x => x.id === id); if (!a) return;
+  a.status = 'returned';
+  a.note = 'Возвращён: мотивировка требует уточнения.';
+  closeModal(); render();
+  toast('Акт ' + a.id + ' возвращён цензору. Срок продолжает идти.');
+}
+function подписатьВсе(){
+  const ждут = АКТЫ.filter(a => a.status === 'waiting');
+  if (!ждут.length) return;
+  modal(`
+    <div class="mh"><div><h3>Подписать ${ждут.length} ${склАкт(ждут.length)}</h3>
+      <div class="top-sub">Подписант: ${esc(ПОДПИСАНТ.name)}, ${esc(ПОДПИСАНТ.post)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn"><b>Подпись удостоверяет основание по каждому акту.</b>
+        Если хотя бы один вызывает сомнение, подписывайте поштучно.</div>
+      <ul class="plain warn-list">
+        ${ждут.map(a => `<li><b>${esc(a.id)}</b> · ${esc(a.person)} — ${esc(a.ground)}</li>`).join('')}
+      </ul>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="подтвердитьПодписьВсех()">Подписать все</button>
+    </div>`);
+}
+function подтвердитьПодписьВсех(){
+  const ждут = АКТЫ.filter(a => a.status === 'waiting');
+  ждут.forEach(a => { a.status = 'signed'; a.overdue = false; });
+  closeModal(); render();
+  toast('Подписано актов: ' + ждут.length);
+}
+
+/* ---------------- пропускная способность ---------------- */
+
+function блокПропускной(){
+  if (!ПРОП) return '';
+  const объём = объёмОкна();
+  const мин = минутыЗаОкно(объём, S.trust);
+  const доля = доляБюджета(мин);
+  const влезает = мин <= ПРОП.бюджетМин;
+  const режимы = ['manual', 'half', 'full'];
+
+  return `
+    <h2 class="sect">Пропускная способность</h2>
+    <div class="card">
+      <div class="progress">
+        <span>Трёхдневное окно: <b>${объём}</b> материалов, режим «${esc(ПРОП.режимЛейбл[S.trust])}»</span>
+        <span class="pbar"><i style="width:${Math.min(доля, 100)}%; background:${влезает ? 'var(--success)' : 'var(--danger)'}"></i></span>
+        <span class="tnum"><b style="color:${влезает ? 'var(--success)' : 'var(--danger)'}">${мин} мин</b> из ${ПРОП.бюджетМин}</span>
+      </div>
+
+      <div class="note ${влезает ? 'ok' : 'warn'}">
+        ${влезает
+          ? `<b>Норматив выдерживается.</b> Запас — ${ПРОП.бюджетМин - мин} минут, это ${100 - доля}% бюджета.
+             Ни одно письмо не выходит за трёхдневный срок.`
+          : `<b>Норматив не выдерживается.</b> Не хватает ${мин - ПРОП.бюджетМин} минут за окно.
+             Часть корреспонденции выйдет за трёхдневный срок.`}
+      </div>
+
+      <h3 style="margin-top:20px">Режим доверия — ваше решение</h3>
+      <p style="color:var(--muted); margin:0 0 12px; font-size:14.5px">
+        Цензор режим не выбирает. Это решение о пропускной способности учреждения
+        и о том, какую долю зелёных вы готовы пропускать без просмотра.</p>
+
+      ${режимы.map(р => {
+        const м = минутыЗаОкно(объём, р);
+        const влез = м <= ПРОП.бюджетМин;
+        return `
+        <label class="opt ${S.trust === р ? 'on' : ''}" onclick="назначитьРежим('${р}')">
+          <b>${esc(ПРОП.режимЛейбл[р])} — ${м} мин из ${ПРОП.бюджетМин}
+            <span class="chip ${влез ? 'g' : 'r'}" style="margin-left:8px">${влез ? 'укладывается' : 'не укладывается'}</span></b>
+          <span>${esc(ПРОП.режимПояснение[р])}</span>
+        </label>`;
+      }).join('')}
+
+      <h3 style="margin-top:20px">Если объём вырастет</h3>
+      <div class="журнал" style="margin-top:10px">
+        <table class="журнал-таб" style="min-width:0">
+          <thead><tr><th>Сценарий трёх дней</th><th>Объём</th>
+            ${режимы.map(р => `<th>${esc(ПРОП.режимЛейбл[р])}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${ПРОП.сценарии.map(с => `
+              <tr>
+                <td>${esc(с.титул)}<div class="top-sub">${esc(с.расклад)}</div></td>
+                <td class="tnum">${с.объём}</td>
+                ${режимы.map(р => {
+                  const м = минутыЗаОкно(с.объём, р);
+                  const влез = м <= ПРОП.бюджетМин;
+                  return `<td class="tnum" style="color:${влез ? 'var(--success)' : 'var(--danger)'}">
+                    ${м} мин<div class="top-sub">${доляБюджета(м)}%</div></td>`;
+                }).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-bottom:0">Удвоение потока выдерживает только полное доверие.
+        В ручном режиме учреждение выбивается из норматива уже на сегодняшнем объёме с одним пиковым днём.</div>
+    </div>`;
+}
+
+function назначитьРежим(р){
+  S.trust = р;
+  render();
+  toast('Режим доверия по учреждению: ' + ПРОП.режимЛейбл[р] + '. Цензор увидит изменение сразу.');
+}
+
+/* ---------------- нагрузка участков ---------------- */
+
+function блокНагрузки(){
+  if (!НАГРУЗКА_УЧАСТКОВ.length) return '';
+  return `
+    <h2 class="sect">Некомплект по участкам</h2>
+    <div class="rows">
+      ${НАГРУЗКА_УЧАСТКОВ.map(у => {
+        const не = у.поШтату - у.людей;
+        const цвет = не >= 2 ? 'r' : не === 1 ? 'o' : 'g';
+        return `
+        <div class="row">
+          <div class="stripe ${цвет}"></div>
+          <div><div class="who">${esc(у.участок)}</div>
+            <div class="meta">${у.людей} из ${у.поШтату} ставок</div>
+            <div class="marks">
+              <span class="chip ${цвет}">${не ? 'не хватает ' + не : 'укомплектован'}</span>
+              <span class="chip">времени на участок: ${Math.round(у.доляВремени * 100)}%</span>
+            </div></div>
+          <div><div class="why">${esc(у.note)}</div></div>
+          <div class="acts"></div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="note warn">Цензура — единственный участок, где один человек закрывает всё учреждение
+      и тратит на это половину рабочего времени. Её больничный останавливает корреспонденцию целиком.</div>`;
+}
+
+/* ---------------- доклад в территориальный орган ---------------- */
+
+function докладНаверх(){
+  const объём = объёмОкна();
+  const мин = минутыЗаОкно(объём, S.trust);
+  const св = POP.сводка;
+  const замечаний = LIVE.audit.filter(a => a.level !== 'green').length;
+  const обращений = LIVE.complaints.filter(c => c.status !== 'закрыто').length;
+  modal(`
+    <div class="mh"><div><h3>Доклад в территориальный орган</h3>
+      <div class="top-sub">ИК-5 · за трёхдневное окно по состоянию на сегодня</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="print-sheet">
+        <div class="print-head">Сведения о состоянии цензуры корреспонденции<br>ИК-5, Северный территориальный орган</div>
+        <div class="kv">
+          <div class="k">Спецконтингент</div><div>${св.всего} человек, из них иностранных граждан ${св.иностранцы}</div>
+          <div class="k">Пользуются сервисами связи</div><div>${св.активныеЗТ}</div>
+          <div class="k">Корреспонденции за окно</div><div>${объём} материалов за 3 суток</div>
+          <div class="k">Режим проверки</div><div>${esc(ПРОП.режимЛейбл[S.trust])}</div>
+          <div class="k">Затраты времени</div><div>${мин} мин из ${ПРОП.бюджетМин} (${доляБюджета(мин)}% бюджета)</div>
+          <div class="k">Нарушения норматива 3 суток</div><div>${мин <= ПРОП.бюджетМин ? 'не допущены' : 'имеются'}</div>
+          <div class="k">Актов недопуска не подписано</div><div>${актовЖдёт()}, из них просрочено ${актовПросрочено()}</div>
+          <div class="k">Замечаний самоаудита открыто</div><div>${замечаний}</div>
+          <div class="k">Обращений и проверок в работе</div><div>${обращений}</div>
+        </div>
+        <div class="print-foot">Начальник учреждения ${esc(ПОДПИСАНТ.name)}</div>
+      </div>
+      <div class="note">Все числа собраны из тех же данных, что и экраны. Пересчитывать вручную не нужно.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="window.print()">${ICON.printer} Печать</button>
+    </div>`);
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -2838,6 +3174,7 @@ function render(){
     group:       ['Группа наблюдения', 'Состав, правило и живые разговоры'],
     opreports:   ['Отчёты и подборки', 'Готовые срезы по людям контура'],
     facility:    ['Состояние учреждения', 'Что требует решения сегодня'],
+    signing:     ['Акты на подпись', 'Недопуски, подготовленные вольнонаёмным сотрудником'],
     audit:       ['Самоаудит', 'Расхождения по срокам, журналам и доступам'],
     services:    ['Сервисы', 'Что подключено на контуре'],
     staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
@@ -2855,7 +3192,8 @@ function render(){
      facility:renderFacility, audit:renderAudit, services:renderServices,
      staff:renderStaff, complaints:renderComplaints,
      live:renderLive, completed:renderCompleted,
-     register:renderRegister, profile:renderProfile })[S.view]();
+     register:renderRegister, profile:renderProfile,
+     signing:renderSigning })[S.view]();
   window.scrollTo({top:0});
 }
 собратьОперативника();
