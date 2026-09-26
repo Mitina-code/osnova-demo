@@ -206,7 +206,8 @@ mark{background:var(--soft-beige); color:#8A5A0B; border-bottom:2px solid var(--
 mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var(--danger)}
 .ts{display:grid; grid-template-columns:64px 1fr; gap:8px 14px; font-size:15px}
 .ts .t{color:var(--muted); font-size:13px; padding-top:2px; font-variant-numeric:tabular-nums}
-.kv{display:grid; grid-template-columns:auto 1fr; gap:9px 16px; font-size:14px}
+.kv{display:grid; grid-template-columns:200px 1fr; gap:9px 18px; font-size:14px; align-items:baseline}
+@media (max-width:620px){ .kv{grid-template-columns:1fr; gap:2px 0} .kv .k{margin-top:8px} }
 .kv .k{color:var(--muted)}
 .progress{display:flex; align-items:center; gap:12px; font-size:13.5px; color:var(--muted); margin-bottom:14px}
 .pbar{flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; max-width:280px}
@@ -316,20 +317,30 @@ ul.plain.warn-list li:before{background:var(--warning)}
 .выбран-чел{background:var(--lilac); border:1px solid var(--accent-line); border-radius:10px;
   padding:10px 14px; margin-bottom:16px; font-size:14.5px}
 
-/* журнал выглядит как журнал: линованная таблица с номерами */
-.журнал{background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card); overflow:auto}
-.журнал-таб{width:100%; border-collapse:collapse; font-size:13.5px; min-width:960px}
-.журнал-таб th{background:var(--bg); text-align:left; padding:11px 12px; font-weight:650;
-  color:var(--muted); border-bottom:1.5px solid var(--border); white-space:nowrap}
-.журнал-таб td{padding:10px 12px; border-bottom:1px solid var(--border-soft);
-  border-right:1px solid var(--border-soft); vertical-align:top}
-.журнал-таб td:last-child{border-right:0}
-.журнал-таб th{border-right:1px solid var(--border-soft)}
-.журнал-таб th:last-child{border-right:0}
-.журнал-таб tr.внешн td{background:var(--bg)}
-.журнал-таб tbody tr:hover td{background:var(--lilac)}
-.журнал-таб.печатный{min-width:0; font-size:11.5px}
-.журнал-таб.печатный td, .журнал-таб.печатный th{padding:6px 7px}
+/* ---------- ТАБЛИЦА. Одна на весь продукт ----------
+   Правила, от которых нельзя отступать:
+     — рамка одна, у обёртки .tbl-wrap; у самой таблицы рамок нет;
+     — вертикальных линий между колонками НЕТ никогда;
+     — строки разделяет одна волосяная линия сверху;
+     — заливки строк НЕТ: ни зебры, ни «особых» строк. Состояние
+       показывает .chip в ячейке, а не цвет фона;
+     — ширины колонок задаются один раз в <colgroup> в процентах,
+       чтобы экран и печать не разъезжались;
+     — числа — в ячейке с классом .num;
+     — вторая строка в ячейке — <span class="sub">. */
+.tbl-wrap{background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-card); overflow-x:auto}
+.tbl{width:100%; border-collapse:collapse; font-size:13.5px; table-layout:fixed}
+.tbl th{background:var(--bg); text-align:left; vertical-align:bottom;
+  padding:11px 14px; font-weight:650; color:var(--muted);
+  border-bottom:1px solid var(--border); white-space:nowrap}
+.tbl td{padding:11px 14px; border-top:1px solid var(--border-soft);
+  vertical-align:top; overflow-wrap:anywhere}
+.tbl tbody tr:first-child td{border-top:0}
+.tbl tbody tr:hover td{background:var(--bg)}
+.tbl .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+.tbl .sub{display:block; color:var(--muted); font-size:12.5px; margin-top:2px}
+.tbl.compact th, .tbl.compact td{padding:7px 9px; font-size:12.5px}
 
 /* ---------- добавленные разделы ---------- */
 .pulse{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--success);
@@ -372,13 +383,6 @@ h2.sect{font-size:21px; font-weight:700; margin:30px 0 14px; letter-spacing:-.3p
 .opt span{color:var(--muted); font-size:14px}
 .opt.on span{color:var(--primary)}
 
-/* лист для вклейки в бумажный журнал */
-.glue{border:1px solid var(--border); border-radius:12px; overflow:hidden; font-size:13px}
-.glue-head, .glue-row{display:grid; grid-template-columns:92px 1.4fr 130px 1.6fr; gap:12px; padding:9px 14px}
-.glue-head{background:var(--bg); font-weight:650; color:var(--muted); border-bottom:1px solid var(--border)}
-.glue-row{border-bottom:1px solid var(--border-soft)}
-.glue-row:last-child{border-bottom:0}
-.glue-row span{overflow-wrap:anywhere}
 
 /* предпросмотр печати материала */
 .print-sheet{border:1px solid var(--border); border-radius:12px; padding:22px 24px; background:var(--surface); line-height:1.7}
@@ -401,25 +405,17 @@ a.btn{text-decoration:none}
   #printRoot .print-sheet{border:0; border-radius:0; padding:0}
   #printRoot .card{border:0; padding:0; margin-bottom:12px; background:none}
   @page{margin:15mm}
-  #printRoot .журнал{border:0; overflow:visible}
-  #printRoot .журнал-таб{min-width:0; width:100%; font-size:7.5pt; table-layout:fixed}
-  #printRoot .журнал-таб th, #printRoot .журнал-таб td{padding:3px 4px; overflow-wrap:anywhere}
-  /* ширины колонок журнала: имена широкие, служебные поля узкие —
-     иначе fixed-раскладка делит всё поровну и рвёт фамилии */
-  #printRoot .журнал-таб.печатный th:nth-child(1){width:5%}
-  #printRoot .журнал-таб.печатный th:nth-child(2){width:9%}
-  #printRoot .журнал-таб.печатный th:nth-child(3){width:11%}
-  #printRoot .журнал-таб.печатный th:nth-child(4){width:19%}
-  #printRoot .журнал-таб.печатный th:nth-child(5){width:19%}
-  #printRoot .журнал-таб.печатный th:nth-child(6){width:9%}
-  #printRoot .журнал-таб.печатный th:nth-child(7){width:5%}
-  #printRoot .журнал-таб.печатный th:nth-child(8){width:11%}
-  #printRoot .журнал-таб.печатный th:nth-child(9){width:12%}
-  #printRoot .glue-head, #printRoot .glue-row{font-size:8.5pt; padding:5px 8px}
+  /* Ширины колонок приходят из <colgroup> в разметке — здесь только размер
+     шрифта и плотность. Никаких nth-child: экран и бумага согласованы. */
+  #printRoot .tbl-wrap{border:0; overflow:visible; background:none}
+  #printRoot .tbl{font-size:7.5pt}
+  #printRoot .tbl th, #printRoot .tbl td{padding:3px 4px}
+  #printRoot .tbl th{white-space:normal}
+  #printRoot .tbl tbody tr:hover td{background:none}
   #printRoot .kv{gap:4px 12px}
   #printRoot h3{margin:10px 0 6px}
   #printRoot tr, #printRoot .row, #printRoot .entry,
-  #printRoot .card, #printRoot .glue-row{break-inside:avoid}
+  #printRoot .card{break-inside:avoid}
 }
 
 /* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
@@ -1349,15 +1345,20 @@ function openGlue(){
       <div class="top-sub">28.08.2026 · ИК-5 · цензор Соколова Е.С. · записей: ${S.log.length}</div></div>
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">
-      <div class="glue">
-        <div class="glue-head"><span>№</span><span>Отправитель → Получатель</span><span>Решение</span><span>Основание</span></div>
-        ${rows.map(e => `<div class="glue-row">
-          <span>${esc(e.id)}</span>
-          <span>${esc(e.from)} → ${esc(e.to)}</span>
-          <span>${e.decision === 'allow' ? 'разрешено' : e.decision === 'deny' ? 'не допущено' : 'с изъятием'}</span>
-          <span>${esc(e.basis)}</span></div>`).join('')}
-        ${S.log.length > 40 ? `<div class="top-sub" style="padding:10px 0">…и ещё ${S.log.length - 40} записей на следующих листах</div>` : ''}
+      <div class="tbl-wrap">
+        <table class="tbl compact">
+          <colgroup><col style="width:12%"><col style="width:38%"><col style="width:14%"><col style="width:36%"></colgroup>
+          <thead><tr><th>№</th><th>Отправитель → Получатель</th><th>Решение</th><th>Основание</th></tr></thead>
+          <tbody>
+            ${rows.map(e => `<tr>
+              <td>${esc(e.id)}</td>
+              <td>${esc(e.from)} → ${esc(e.to)}</td>
+              <td>${e.decision === 'allow' ? 'разрешено' : e.decision === 'deny' ? 'не допущено' : 'с изъятием'}</td>
+              <td>${esc(e.basis)}</td></tr>`).join('')}
+          </tbody>
+        </table>
       </div>
+      ${S.log.length > 40 ? `<div class="top-sub" style="padding:10px 2px 0">…и ещё ${S.log.length - 40} записей на следующих листах</div>` : ''}
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Закрыть</button>
@@ -2431,11 +2432,14 @@ function выгрузитьПодборку(id){
     <div class="mb">
       <div class="print-sheet">
         <div class="print-head">ИК-5 · ${s ? esc(s.name) : 'Суточная сводка'} · 28.08.2026</div>
-        ${s ? `<div class="glue">
-            <div class="glue-head"><span>№</span><span>ФИО</span><span>Отряд</span><span>Признак</span></div>
-            ${люди.slice(0, 30).map((p, i) => `<div class="glue-row">
-              <span>${i + 1}</span><span>${esc(p.name)}</span><span>${esc(p.unit)}</span>
-              <span>${esc(p.riskText)} · контактов ${p.contacts.length}</span></div>`).join('')}
+        ${s ? `<div class="tbl-wrap">
+            <table class="tbl compact">
+              <colgroup><col style="width:8%"><col style="width:44%"><col style="width:18%"><col style="width:30%"></colgroup>
+              <thead><tr><th class="num">№</th><th>ФИО</th><th>Отряд</th><th>Признак</th></tr></thead>
+              <tbody>${люди.slice(0, 30).map((p, i) => `<tr>
+                <td class="num">${i + 1}</td><td>${esc(p.name)}</td><td>${esc(p.unit)}</td>
+                <td>${esc(p.riskText)}<span class="sub">контактов ${p.contacts.length}</span></td></tr>`).join('')}</tbody>
+            </table>
           </div>
           ${люди.length > 30 ? `<div class="top-sub" style="padding-top:10px">…и ещё ${люди.length - 30} на следующих листах</div>` : ''}`
         : `<div class="kv" style="margin-top:14px">
@@ -2722,23 +2726,28 @@ function renderRegister(){
       <span class="chip">${список.length} из ${все.length}</span>
     </div>
 
-    <div class="журнал">
-      <table class="журнал-таб">
+    <div class="tbl-wrap">
+      <table class="tbl">
+          <colgroup>
+            <col style="width:5%"><col style="width:8%"><col style="width:11%">
+            <col style="width:18%"><col style="width:18%"><col style="width:10%">
+            <col style="width:4%"><col style="width:14%"><col style="width:12%">
+          </colgroup>
         <thead><tr>
-          <th style="width:58px">№</th><th style="width:88px">Дата</th><th style="width:112px">Источник</th>
-          <th>От кого</th><th>Кому</th><th style="width:120px">Вид</th>
-          <th style="width:44px">Стр.</th><th style="width:130px">Решение</th><th style="width:100px">Подпись</th>
+          <th>№</th><th>Дата</th><th>Источник</th>
+          <th>От кого</th><th>Кому</th><th>Вид</th>
+          <th>Стр.</th><th>Решение</th><th>Подпись</th>
         </tr></thead>
         <tbody>
           ${список.slice(0, 60).map(z => `
-            <tr class="${z.source !== 'сервис ЗТ' ? 'внешн' : ''}">
-              <td class="tnum">${z.n}</td>
-              <td class="tnum">${esc(z.date)}</td>
-              <td>${esc(z.source)}</td>
+            <tr>
+              <td class="num">${z.n}</td>
+              <td class="num">${esc(z.date)}</td>
+              <td>${esc(z.source)}${z.source !== 'сервис ЗТ' ? '<span class="sub">вне ЗТ</span>' : ''}</td>
               <td>${esc(z.from)}</td>
               <td>${esc(z.to)}</td>
               <td>${esc(z.kind)}</td>
-              <td class="tnum">${z.pages}</td>
+              <td class="num">${z.pages}</td>
               <td><span class="chip ${z.decision === 'не допущено' ? 'r' : z.decision === 'вымарано частично' ? 'o' : z.decision === 'на проверке' ? '' : 'g'}">${esc(z.decision)}</span></td>
               <td>${esc(z.by)}</td>
             </tr>`).join('')}
@@ -2747,8 +2756,8 @@ function renderRegister(){
       ${список.length > 60 ? `<div class="more"><span class="chip">показаны первые 60 из ${список.length}</span></div>` : ''}
     </div>
 
-    <div class="note">Строки с серой подложкой — корреспонденция, поступившая <b>вне сервисов ЗТ</b>.
-      Она тоже подлежит регистрации, и её вносят вручную.</div>
+    <div class="note">Пометка <b>«вне ЗТ»</b> в графе «Источник» — корреспонденция, поступившая
+      мимо сервисов: почтой, нарочным, из суда. Она тоже подлежит регистрации, и её вносят вручную.</div>
   `;
 }
 
@@ -2857,7 +2866,12 @@ function печатьЖурнала(){
     <div class="mb">
       <div class="print-sheet">
         <div class="print-head">ЖУРНАЛ РЕГИСТРАЦИИ КОРРЕСПОНДЕНЦИИ · ИК-5 · лист от ${esc(строки[0] ? строки[0].date : '')}</div>
-        <table class="журнал-таб печатный">
+        <table class="tbl compact">
+          <colgroup>
+            <col style="width:5%"><col style="width:8%"><col style="width:11%">
+            <col style="width:18%"><col style="width:18%"><col style="width:10%">
+            <col style="width:4%"><col style="width:14%"><col style="width:12%">
+          </colgroup>
           <thead><tr><th>№</th><th>Дата</th><th>Источник</th><th>От кого</th><th>Кому</th><th>Вид</th><th>Стр.</th><th>Решение</th><th>Подпись</th></tr></thead>
           <tbody>${строки.map(z => `<tr>
             <td>${z.n}</td><td>${esc(z.date)}</td><td>${esc(z.source)}</td>
@@ -3114,20 +3128,22 @@ function блокПропускной(){
       }).join('')}
 
       <h3 style="margin-top:20px">Если объём вырастет</h3>
-      <div class="журнал" style="margin-top:10px">
-        <table class="журнал-таб" style="min-width:0">
-          <thead><tr><th>Сценарий трёх дней</th><th>Объём</th>
-            ${режимы.map(р => `<th>${esc(ПРОП.режимЛейбл[р])}</th>`).join('')}</tr></thead>
+      <div class="tbl-wrap" style="margin-top:10px">
+        <table class="tbl">
+          <colgroup><col style="width:34%"><col style="width:12%">
+            <col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
+          <thead><tr><th>Сценарий трёх дней</th><th class="num">Объём</th>
+            ${режимы.map(р => `<th class="num">${esc(ПРОП.режимЛейбл[р])}</th>`).join('')}</tr></thead>
           <tbody>
             ${ПРОП.сценарии.map(с => `
               <tr>
-                <td>${esc(с.титул)}<div class="top-sub">${esc(с.расклад)}</div></td>
-                <td class="tnum">${с.объём}</td>
+                <td>${esc(с.титул)}<span class="sub">${esc(с.расклад)}</span></td>
+                <td class="num">${с.объём}</td>
                 ${режимы.map(р => {
                   const м = минутыЗаОкно(с.объём, р);
                   const влез = м <= ПРОП.бюджетМин;
-                  return `<td class="tnum" style="color:${влез ? 'var(--success)' : 'var(--danger)'}">
-                    ${м} мин<div class="top-sub">${доляБюджета(м)}%</div></td>`;
+                  return `<td class="num" style="color:${влез ? 'var(--success)' : 'var(--danger)'}">
+                    ${м} мин<span class="sub">${доляБюджета(м)}%</span></td>`;
                 }).join('')}
               </tr>`).join('')}
           </tbody>
