@@ -389,11 +389,24 @@ h2.sect{font-size:21px; font-weight:700; margin:30px 0 14px; letter-spacing:-.3p
 a.btn{text-decoration:none}
 
 @media (max-width:1180px){ .cards3{grid-template-columns:1fr} }
+/* Печатается только #printRoot — туда кладётся один нужный документ.
+   Всё остальное на печать не уходит вовсе: так не бывает ни 135 страниц,
+   ни схлопнутой в колонку вёрстки. */
+#printRoot{display:none}
 @media print{
-  .sidebar, .topbar, .mf, .mh, .bar, .head-acts{display:none !important}
-  .back{position:static; background:none; padding:0; display:block}
-  .modal{box-shadow:none; border:0; max-height:none; width:100%}
-  body{background:#fff}
+  .app, #modalRoot, #toastRoot{display:none !important}
+  #printRoot{display:block}
+  body{background:#fff; color:#000; font-size:11pt}
+  #printRoot .note, #printRoot .btn, #printRoot button{display:none !important}
+  #printRoot .print-sheet{border:0; border-radius:0; padding:0}
+  #printRoot .card{border:0; padding:0; margin-bottom:12px; background:none}
+  #printRoot .журнал{border:0; overflow:visible}
+  #printRoot .журнал-таб{min-width:0; font-size:9pt}
+  #printRoot .журнал-таб th, #printRoot .журнал-таб td{padding:4px 6px}
+  #printRoot .kv{gap:4px 12px}
+  #printRoot h3{margin:10px 0 6px}
+  #printRoot tr, #printRoot .row, #printRoot .entry,
+  #printRoot .card, #printRoot .glue-row{break-inside:avoid}
 }
 
 /* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
@@ -465,6 +478,8 @@ a.btn{text-decoration:none}
 
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
+<div id="printRoot"></div>
+<style id="printPage"></style>
 
 <script src="data-population.js"></script>
 <script src="data-reference.js"></script>
@@ -651,10 +666,11 @@ function groupAllowed(risk){
   if(S.trust==='half') return risk==='green';
   return true;
 }
-/* зелёные, попавшие в выборочный контроль, из пачки исключаются */
-function bulkSet(risk){
-  return left(risk).filter(x => !(risk==='green' && x.sample));
-}
+/* Выборка уходит вместе со всей пачкой. Держать 5% зелёных перед отправкой
+   незачем: остальные 95% и так уходят непрочитанными, значит задержка ничего
+   не предотвращает. Это измерение качества анализатора, а не защита, —
+   и проверяется оно после доставки, в разделе «Контроль качества». */
+function bulkSet(risk){ return left(risk); }
 
 /* ---------------- утилиты вывода ---------------- */
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -714,6 +730,7 @@ const РАЗДЕЛЫ = {
   register:    [ICON.archive,    'Журнал регистрации'],
   profile:     [ICON.staff,      'Профиль'],
   signing:     [ICON.legal,      'Акты на подпись'],
+  quality:     [ICON.audit,      'Контроль качества'],
   feed:        [ICON.feed,       'Персональная лента'],
   people:      [ICON.people,     'Люди и связи'],
   groups:      [ICON.groups,     'Группы и наблюдение'],
@@ -733,7 +750,7 @@ const РАЗДЕЛЫ = {
 
 const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
-                разделы:['queue','assignments','register','archive','reports','channel','legal','support'] },
+                разделы:['queue','quality','assignments','register','archive','reports','channel','legal','support'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
                 разделы:['feed','assignments','people','groups','opreports','channel','legal','support'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
@@ -764,6 +781,7 @@ function renderNav(){
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
     staff: LIVE.staff.filter(x=>x.review).length,
     signing: актовЖдёт(),
+    quality: наКонтроле().length,
     complaints: LIVE.complaints.filter(c=>c.status!=='закрыто').length,
   };
   document.getElementById('nav').innerHTML = роль.разделы.map(v => {
@@ -853,7 +871,7 @@ function renderQueue(){
           ? `<button class="btn ${S.stack==='red'?'danger':'primary'}" onclick="startGroup('${S.stack}')">${actionText[0]} · ${bulk.length}</button>`
           : `<span class="chip">${esc(reason)}</span>`}
       </div>
-      ${samples ? `<div class="note warn"><b>Выборочный контроль — ${samples} ${plural(samples,'материал','материала','материалов')}.</b> Отмечены в списке. В групповое подтверждение не входят, открываются отдельно.</div>`:''}
+      ${samples ? `<div class="note"><b>В выборку попало ${samples} ${plural(samples,'материал','материала','материалов')}.</b> Они уйдут вместе со всеми — выборка ничего не задерживает. Сверить их можно потом, в разделе «Контроль качества», срок до конца недели.</div>`:''}
       <div class="rows">${page.map(rowHTML).join('')}</div>
       ${cur.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${cur.length - page.length}</button></div>` : ''}
     ` : `<div class="empty"><div class="big">${ICON.check}</div><b>Стопка «${RISK_NAME[S.stack]}» разобрана</b><div>Переключитесь на другую стопку или откройте журнал решений.</div></div>`}
@@ -1450,8 +1468,23 @@ function openSupportForm(){
 
 /* ---------------- Печать и контекст ---------------- */
 
+/* Все кнопки печати живут внутри модального окна, а сам документ — в его
+   теле (.mb). Печатаем именно его: страница целиком на бумагу не идёт. */
 function doPrint(){
+  const тело = document.querySelector('#modalRoot .mb');
+  const широкий = !!(тело && тело.querySelector('.журнал-таб, .glue'));
+  печатьДокумента(тело ? тело.innerHTML : '', широкий);
+}
+
+function печатьДокумента(html, альбом){
+  if (!html) { toast('Нечего печатать'); return; }
+  const корень = document.getElementById('printRoot');
+  const лист = document.getElementById('printPage');
+  корень.innerHTML = html;
+  лист.textContent = '@page{ size:A4 ' + (альбом ? 'landscape' : 'portrait') + '; margin:15mm }';
   try { window.print(); } catch (e) { /* в некоторых окружениях печать недоступна */ }
+  корень.innerHTML = '';
+  лист.textContent = '';
   closeModal();
   toast('Отправлено на принтер учреждения');
 }
@@ -2857,6 +2890,13 @@ function минутыЗаОкно(объём, режим){
 }
 function доляБюджета(мин){ return ПРОП ? Math.round(мин / ПРОП.бюджетМин * 100) : 0; }
 
+/* Сверка выборки идёт после доставки, поэтому в норматив трёх суток
+   не входит. Считаем её отдельно и показываем отдельно. */
+function минутыВыборки(объём){
+  if (!ПРОП) return 0;
+  return Math.round(объём * ПРОП.доли.green * S.sampleRate * ПРОП.выборкаСек / 60);
+}
+
 /* Объём окна: сегодняшний набор плюс два обычных дня. */
 function объёмОкна(){ return S.total + 200 * 2; }
 
@@ -2971,7 +3011,7 @@ function открытьАкт(id){
       ${a.status === 'waiting'
         ? `<button class="btn" onclick="вернутьАкт('${a.id}')">Вернуть на доработку</button>
            <button class="btn primary" onclick="подписатьАкт('${a.id}')">Подписать</button>`
-        : `<button class="btn" onclick="window.print()">${ICON.printer} Печать</button>
+        : `<button class="btn" onclick="doPrint()">${ICON.printer} Печать</button>
            <button class="btn primary" onclick="closeModal()">Закрыть</button>`}
     </div>`);
 }
@@ -3042,6 +3082,10 @@ function блокПропускной(){
              Часть корреспонденции выйдет за трёхдневный срок.`}
       </div>
 
+      <div class="note" style="margin-bottom:18px">Сверх этого — контроль качества анализатора:
+        <b>${минутыВыборки(объём)} мин</b> за окно при доле выборки ${Math.round(S.sampleRate * 100)}%.
+        В норматив не входит: материалы выборки уходят вместе со всеми, а сверяются после доставки.</div>
+
       <h3 style="margin-top:20px">Режим доверия — ваше решение</h3>
       <p style="color:var(--muted); margin:0 0 12px; font-size:14.5px">
         Цензор режим не выбирает. Это решение о пропускной способности учреждения
@@ -3057,6 +3101,22 @@ function блокПропускной(){
           <span>${esc(ПРОП.режимПояснение[р])}</span>
         </label>`;
       }).join('')}
+
+      <h3 style="margin-top:20px">Доля выборки</h3>
+      <p style="color:var(--muted); margin:0 0 12px; font-size:14.5px">
+        Сколько зелёных сверять после доставки. Чем дольше подтверждается точность,
+        тем меньшую долю достаточно проверять.</p>
+      <div class="bar">
+        <div class="seg">
+          ${[0, 0.02, 0.05, 0.10].map(д => `
+            <button class="${Math.abs(S.sampleRate - д) < 0.001 ? 'on' : ''}" onclick="назначитьВыборку(${д})">
+              ${д === 0 ? 'без сверки' : Math.round(д * 100) + '%'}</button>`).join('')}
+        </div>
+        <span class="lab">${S.sampleRate ? минутыВыборки(объём) + ' мин за окно' : 'точность перестанет измеряться'}</span>
+      </div>
+      ${S.sampleRate === 0 ? `<div class="note warn" style="margin-top:0">Без сверки точность анализатора
+        нечем подтвердить. На проверке на вопрос «на каком основании пропущено без прочтения»
+        ответить будет нечем.</div>` : ''}
 
       <h3 style="margin-top:20px">Если объём вырастет</h3>
       <div class="журнал" style="margin-top:10px">
@@ -3081,6 +3141,14 @@ function блокПропускной(){
       <div class="note" style="margin-bottom:0">Удвоение потока выдерживает только полное доверие.
         В ручном режиме учреждение выбивается из норматива уже на сегодняшнем объёме с одним пиковым днём.</div>
     </div>`;
+}
+
+function назначитьВыборку(д){
+  S.sampleRate = д;
+  render();
+  toast(д === 0
+    ? 'Выборочный контроль отключён по учреждению.'
+    : 'Доля выборки по учреждению: ' + Math.round(д * 100) + '%. Применится со следующей партии.');
 }
 
 function назначитьРежим(р){
@@ -3149,8 +3217,138 @@ function докладНаверх(){
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Закрыть</button>
-      <button class="btn primary" onclick="window.print()">${ICON.printer} Печать</button>
+      <button class="btn primary" onclick="doPrint()">${ICON.printer} Печать</button>
     </div>`);
+}
+
+/* ====================================================================
+   КОНТРОЛЬ КАЧЕСТВА АНАЛИЗАТОРА
+
+   Выборка нужна не для того, чтобы поймать нарушение. В режиме полного
+   доверия 95% зелёных и так уходят непрочитанными — значит, задержка
+   оставшихся 5% перед отправкой ничего не предотвращает. Она только
+   измеряет: прав ли анализатор, когда говорит «зелёный».
+
+   Измерение не обязано стоять на пути письма. Поэтому выборка уходит
+   вместе со всей пачкой, а проверяется после доставки, отдельной
+   задачей с мягким сроком. Из норматива трёх суток она уходит совсем.
+
+   Что даёт проверка:
+     — накопленную точность анализатора, на которую можно ссылаться;
+     — сигнал, если анализатор поплыл, до того как это заметят снаружи;
+     — основание снижать долю выборки, когда точность подтверждена.
+   ==================================================================== */
+
+/* Доля выборки — решение начальника, как и режим доверия. */
+S.sampleRate = ПРОП ? ПРОП.выборка : 0.05;
+
+function наКонтроле(){ return S.queue.filter(x => x.sample && x.status === 'allowed' && !x.qa); }
+function проверенныхВыборок(){ return S.queue.filter(x => x.qa); }
+function подтверждённыхВыборок(){ return S.queue.filter(x => x.qa === 'ok'); }
+function точностьАнализатора(){
+  const п = проверенныхВыборок().length;
+  return п ? Math.round(подтверждённыхВыборок().length / п * 100) : null;
+}
+
+function renderQuality(){
+  const ждут = наКонтроле();
+  const готовы = проверенныхВыборок();
+  const ошибки = готовы.filter(x => x.qa === 'miss');
+  const точн = точностьАнализатора();
+
+  const строка = x => `
+    <div class="row">
+      <div class="stripe ${x.qa === 'miss' ? 'r' : x.qa === 'ok' ? 'g' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(x.from)} → ${esc(x.to)}</div>
+        <div class="meta">${esc(x.unit)} · ${esc(x.dir.toLowerCase())} ${esc(x.channel)} · доставлено ${esc(x.at)}</div>
+        <div class="marks">
+          <span class="chip">${esc(x.id)}</span>
+          ${x.qa === 'ok' ? '<span class="chip g">анализатор был прав</span>' : ''}
+          ${x.qa === 'miss' ? '<span class="chip r">анализатор ошибся</span>' : ''}
+        </div>
+      </div>
+      <div><div class="sum">${esc(x.sum)}</div><div class="why">${esc(x.why)}</div></div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьВыборку('${x.id}')">Прочитать</button>
+        ${!x.qa ? `<button class="btn sm primary" onclick="отметитьВыборку('${x.id}','ok')">Всё верно</button>` : ''}
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Контроль качества</h1>
+      <p>Каждый двадцатый зелёный материал — на сверку. Срок мягкий: до конца недели.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.audit}</div>
+        <div class="k">Ждут сверки</div><div class="v tnum">${ждут.length}</div><div class="d">срок до конца недели</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Сверено</div><div class="v tnum">${готовы.length}</div><div class="d">за смену</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.reports}</div>
+        <div class="k">Точность анализатора</div><div class="v tnum">${точн === null ? '—' : точн + '%'}</div>
+        <div class="d">${точн === null ? 'нужна первая сверка' : 'по сверенным за смену'}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.alert}</div>
+        <div class="k">Расхождений</div><div class="v tnum">${ошибки.length}</div><div class="d">анализатор ошибся</div></div>
+    </div>
+
+    <div class="note">Материалы уже доставлены. Сверка ничего не задерживает: она показывает,
+      можно ли и дальше доверять анализатору, и на неё ссылаются при проверке.</div>
+
+    <h2 class="sect">Ждут сверки · ${ждут.length}</h2>
+    ${ждут.length
+      ? `<div class="rows">${ждут.map(строка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Всё сверено</b>
+         <div>Новая выборка появится со следующей партией зелёных.</div></div>`}
+
+    ${готовы.length ? `<h2 class="sect">Сверено · ${готовы.length}</h2>
+      <div class="rows">${готовы.map(строка).join('')}</div>` : ''}
+  `;
+}
+
+function открытьВыборку(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const тело = x.ts
+    ? `<div class="ts">${x.ts.map(([t, s], i) =>
+        `<div class="t tnum">${esc(t)}</div><div>${x.hlts.includes(i) ? `<mark>${esc(s)}</mark>` : esc(s)}</div>`).join('')}</div>`
+    : `<div class="body-text">${hlText(x.text || '—', x.hl)}</div>`;
+
+  modal(`
+    <div class="mh">
+      <div><h3>Сверка · ${esc(x.id)}</h3>
+        <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · доставлено ${esc(x.at)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note ok" style="margin-top:0"><b>Материал доставлен.</b>
+        Вы не решаете его судьбу — вы проверяете, правильно ли сработал анализатор.</div>
+      <div class="card" style="background:var(--bg)">
+        <h3>Что сказал анализатор</h3>
+        <div class="kv">
+          <div class="k">Оценка</div><div>зелёный, признаков нарушения не выявлено</div>
+          <div class="k">Резюме</div><div>${esc(x.sum)}</div>
+          <div class="k">Основание</div><div>${esc(x.why)}</div>
+          <div class="k">Проверено правил</div><div>${x.checked}</div>
+        </div>
+      </div>
+      <h3 style="margin:18px 0 10px">Материал</h3>
+      ${тело}
+      ${x.tr ? `<h3 style="margin:18px 0 10px">Перевод</h3><div class="body-text">${esc(x.tr)}</div>` : ''}
+    </div>
+    <div class="mf">
+      ${x.qa
+        ? `<span class="chip ${x.qa === 'ok' ? 'g' : 'r'}">${x.qa === 'ok' ? 'сверено: анализатор был прав' : 'сверено: анализатор ошибся'}</span>
+           <button class="btn primary" onclick="closeModal()">Закрыть</button>`
+        : `<button class="btn danger" onclick="отметитьВыборку('${x.id}','miss')">Анализатор ошибся</button>
+           <button class="btn primary" onclick="отметитьВыборку('${x.id}','ok')">Всё верно</button>`}
+    </div>`);
+}
+
+function отметитьВыборку(id, итог){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  x.qa = итог;
+  closeModal(); render();
+  toast(итог === 'ok'
+    ? 'Сверено: оценка анализатора подтверждена.'
+    : 'Расхождение зафиксировано. Материал уже доставлен — сведения переданы оперативному сотруднику, правило уйдёт на доработку.');
 }
 
 /* ---------------- маршрутизация ---------------- */
@@ -3175,6 +3373,7 @@ function render(){
     opreports:   ['Отчёты и подборки', 'Готовые срезы по людям контура'],
     facility:    ['Состояние учреждения', 'Что требует решения сегодня'],
     signing:     ['Акты на подпись', 'Недопуски, подготовленные вольнонаёмным сотрудником'],
+    quality:     ['Контроль качества', 'Сверка выборки уже доставленных материалов'],
     audit:       ['Самоаудит', 'Расхождения по срокам, журналам и доступам'],
     services:    ['Сервисы', 'Что подключено на контуре'],
     staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
@@ -3193,7 +3392,7 @@ function render(){
      staff:renderStaff, complaints:renderComplaints,
      live:renderLive, completed:renderCompleted,
      register:renderRegister, profile:renderProfile,
-     signing:renderSigning })[S.view]();
+     signing:renderSigning, quality:renderQuality })[S.view]();
   window.scrollTo({top:0});
 }
 собратьОперативника();
