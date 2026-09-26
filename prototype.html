@@ -400,9 +400,22 @@ a.btn{text-decoration:none}
   #printRoot .note, #printRoot .btn, #printRoot button{display:none !important}
   #printRoot .print-sheet{border:0; border-radius:0; padding:0}
   #printRoot .card{border:0; padding:0; margin-bottom:12px; background:none}
+  @page{margin:15mm}
   #printRoot .журнал{border:0; overflow:visible}
-  #printRoot .журнал-таб{min-width:0; font-size:9pt}
-  #printRoot .журнал-таб th, #printRoot .журнал-таб td{padding:4px 6px}
+  #printRoot .журнал-таб{min-width:0; width:100%; font-size:7.5pt; table-layout:fixed}
+  #printRoot .журнал-таб th, #printRoot .журнал-таб td{padding:3px 4px; overflow-wrap:anywhere}
+  /* ширины колонок журнала: имена широкие, служебные поля узкие —
+     иначе fixed-раскладка делит всё поровну и рвёт фамилии */
+  #printRoot .журнал-таб.печатный th:nth-child(1){width:5%}
+  #printRoot .журнал-таб.печатный th:nth-child(2){width:9%}
+  #printRoot .журнал-таб.печатный th:nth-child(3){width:11%}
+  #printRoot .журнал-таб.печатный th:nth-child(4){width:19%}
+  #printRoot .журнал-таб.печатный th:nth-child(5){width:19%}
+  #printRoot .журнал-таб.печатный th:nth-child(6){width:9%}
+  #printRoot .журнал-таб.печатный th:nth-child(7){width:5%}
+  #printRoot .журнал-таб.печатный th:nth-child(8){width:11%}
+  #printRoot .журнал-таб.печатный th:nth-child(9){width:12%}
+  #printRoot .glue-head, #printRoot .glue-row{font-size:8.5pt; padding:5px 8px}
   #printRoot .kv{gap:4px 12px}
   #printRoot h3{margin:10px 0 6px}
   #printRoot tr, #printRoot .row, #printRoot .entry,
@@ -479,7 +492,6 @@ a.btn{text-decoration:none}
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 <div id="printRoot"></div>
-<style id="printPage"></style>
 
 <script src="data-population.js"></script>
 <script src="data-reference.js"></script>
@@ -1472,19 +1484,18 @@ function openSupportForm(){
    теле (.mb). Печатаем именно его: страница целиком на бумагу не идёт. */
 function doPrint(){
   const тело = document.querySelector('#modalRoot .mb');
-  const широкий = !!(тело && тело.querySelector('.журнал-таб, .glue'));
-  печатьДокумента(тело ? тело.innerHTML : '', широкий);
+  печатьДокумента(тело ? тело.innerHTML : '');
 }
 
-function печатьДокумента(html, альбом){
+/* Ориентацию не задаём из кода. Стоит указать size в @page — и браузер
+   запирает выбор макета в диалоге печати. По умолчанию выходит книжная
+   A4, а альбомную при желании можно выбрать руками. */
+function печатьДокумента(html){
   if (!html) { toast('Нечего печатать'); return; }
   const корень = document.getElementById('printRoot');
-  const лист = document.getElementById('printPage');
   корень.innerHTML = html;
-  лист.textContent = '@page{ size:A4 ' + (альбом ? 'landscape' : 'portrait') + '; margin:15mm }';
   try { window.print(); } catch (e) { /* в некоторых окружениях печать недоступна */ }
   корень.innerHTML = '';
-  лист.textContent = '';
   closeModal();
   toast('Отправлено на принтер учреждения');
 }
