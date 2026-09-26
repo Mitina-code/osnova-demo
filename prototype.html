@@ -284,6 +284,12 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .фраза-текст{font-size:16px; font-weight:550; color:#3d2b6b; max-width:760px; line-height:1.6}
 .фраза-имя{color:var(--primary); font-weight:650}
 
+/* Короткий материал: его текст и есть содержание строки, поэтому
+   он набран как текст письма, а не как служебное резюме. */
+.целиком{font-size:15px; line-height:1.55; color:var(--text); font-weight:500;
+  background:var(--bg); border:1px solid var(--border-soft); border-radius:10px;
+  padding:9px 12px; margin-bottom:6px}
+
 .праздник{
   display:flex; align-items:center; gap:20px; flex-wrap:wrap;
   background:var(--surface); border:1px solid var(--accent-line);
@@ -532,6 +538,7 @@ a.btn{text-decoration:none}
 <script src="data-population.js"></script>
 <script src="data-reference.js"></script>
 <script src="data-roles.js"></script>
+<script src="data-history.js"></script>
 <script src="data-shift-normal.js"></script>
 <script src="data-shift-peak.js"></script>
 <script>
@@ -596,7 +603,8 @@ const SETS = {
 const CHANNEL_LABEL = { letter: 'письмо', voice: 'голосовое сообщение', video: 'видеосообщение' };
 const KIND_LABEL    = { text: 'Письмо', audio: 'Голосовое сообщение', video: 'Видеосообщение' };
 const DIR_LABEL     = { in: 'Входящее', out: 'Исходящее' };
-const ORIGIN_LABEL  = { digital: 'Цифровое', scanned: 'Отсканировано' };
+const ORIGIN_LABEL  = { digital: 'Цифровое', scanned: 'Отсканировано', recognized: 'Распознано с бумаги' };
+const MEDIUM_LABEL  = { paper: 'бумага', digital: 'электронное' };
 const LANG_LABEL    = { ru: 'Русский', uz: 'Узбекский', tg: 'Таджикский', kg: 'Киргизский' };
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -643,6 +651,12 @@ function fromContract(m) {
     hl: a.hl || [],
     hlts,
     sample: !!m.sample,
+    medium: m.medium || 'digital',
+    paperSource: m.paperSource || null,
+    chars: m.chars || 0,
+    /* короткий материал читается целиком прямо в ленте */
+    short: !!m.short,
+    durationSec: m.durationSec || null,
     protected: !!(контакт && контакт.protected),
     status: 'queue',
   };
@@ -720,7 +734,11 @@ function groupAllowed(risk){
    незачем: остальные 95% и так уходят непрочитанными, значит задержка ничего
    не предотвращает. Это измерение качества анализатора, а не защита, —
    и проверяется оно после доставки, в разделе «Контроль качества». */
-function bulkSet(risk){ return left(risk); }
+/* Первым действием уходит всё, кроме выборки: выборка остаётся, чтобы
+   цензор могла решить — проверить её или согласовать вторым кликом. */
+function bulkSet(risk){
+  return left(risk).filter(x => !(risk === 'green' && x.sample));
+}
 
 /* ---------------- утилиты вывода ---------------- */
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -858,7 +876,7 @@ function renderQueue(){
   const samples = S.stack==='green' ? cur.filter(x=>x.sample).length : 0;
 
   const actionText = {
-    green:['Разрешить все', 'Признаков нарушения не выявлено.'],
+    green:['Согласовать все', 'Признаков нарушения не выявлено. Отобранные для точечного контроля останутся.'],
     orange:['Разобрать подряд', 'Материалы откроются один за другим.'],
     red:['Оформить недопуск пачкой', 'Мотивировка по каждому — на проверку.']
   }[S.stack];
@@ -914,18 +932,65 @@ function renderQueue(){
     </div>
 
     ${cur.length ? `
-      <div class="actionbar">
+      ${bulk.length ? `<div class="actionbar">
         <div class="txt"><b>${actionText[0]}</b> — ${actionText[1]}</div>
         ${allowed
           ? `<button class="btn ${S.stack==='red'?'danger':'primary'}" onclick="startGroup('${S.stack}')">${actionText[0]} · ${bulk.length}</button>`
           : `<span class="chip">${esc(reason)}</span>`}
-      </div>
-      ${samples ? `<div class="note"><b>Точечный контроль — ${samples} ${plural(samples,'материал','материала','материалов')}.</b> Система отметила каждый двадцатый зелёный, чтобы вы могли время от времени проверять анализатор на деле. Отметка ничего не задерживает: помеченные уходят вместе со всеми. Открывать их — по вашему усмотрению.</div>`:''}
+      </div>` : ''}
+      ${блокВыборки(cur, samples)}
       <div class="rows">${page.map(rowHTML).join('')}</div>
       ${cur.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${cur.length - page.length}</button></div>` : ''}
     ` : `<div class="empty"><div class="big">${ICON.check}</div><b>Стопка «${RISK_NAME[S.stack]}» разобрана</b><div>Переключитесь на другую стопку или откройте журнал решений.</div></div>`}
   `;
 }
+/* Развилка после согласования основной массы зелёных.
+   Пока в стопке есть не только выборка — это обычная подсказка.
+   Когда осталась одна выборка — предложение с двумя ответами. */
+function блокВыборки(текущие, выборок){
+  if (!выборок) return '';
+  const толькоВыборка = текущие.length === выборок;
+
+  if (!толькоВыборка) return `<div class="note"><b>Точечный контроль — ${выборок}
+    ${plural(выборок,'материал','материала','материалов')}.</b> Система отметила каждый
+    двадцатый зелёный. Они останутся после того, как вы согласуете остальные.</div>`;
+
+  return `
+    <div class="actionbar" style="border-color:var(--primary); background:var(--lilac)">
+      <div class="txt"><b>Остальные зелёные согласованы.</b>
+        Осталось ${выборок} ${plural(выборок,'письмо','письма','писем')}, отобранных случайно.
+        Хотите точечно проверить, не ошибается ли анализатор?</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn" onclick="смотретьВыборку()">Посмотреть по очереди</button>
+        <button class="btn primary" onclick="согласоватьВыборку()">Согласовать все ${выборок}</button>
+      </div>
+    </div>`;
+}
+
+/* Вторым кликом — согласовать всю выборку разом. */
+function согласоватьВыборку(){
+  const items = left('green').filter(x => x.sample);
+  if (!items.length) return;
+  items.forEach(x => {
+    x.status = 'allowed';
+    S.log.unshift({
+      id:x.id, from:x.from, to:x.to, decision:'allow',
+      basis:'точечный контроль не проводился, решение анализатора принято',
+      by:'Соколова Е.С., цензор', at:nowStamp(), group:items.length, act:null
+    });
+  });
+  render();
+  toast('Согласовано ' + items.length + ' ' + plural(items.length,'письмо','письма','писем'));
+}
+
+/* Либо посмотреть их одно за другим. */
+function смотретьВыборку(){
+  const items = left('green').filter(x => x.sample);
+  if (!items.length) return;
+  S.conveyor = items.map(x => x.id);
+  openCard(S.conveyor[0]);
+}
+
 function showMore(){S.shown += 50; render()}
 function plural(n,a,b,c){
   const m10=n%10, m100=n%100;
@@ -934,7 +999,20 @@ function plural(n,a,b,c){
   return c;
 }
 
+/* Весь текст короткого материала — одной строкой. Для голоса и видео
+   это расшифровка: слушать нечего, читать нечего сверх этих слов. */
+function целиком(x){
+  if (x.text) return x.text;
+  if (x.ts) return x.ts.map(([, s]) => s).join(' ');
+  return '';
+}
+
 function rowHTML(x){
+  /* Короткий материал: резюме анализатора длиннее самого текста, поэтому
+     показываем текст, а решение принимается прямо здесь, без карточки.
+     Недопуск так не оформить — он требует мотивировки, и для него карточка. */
+  const короткий = x.short && !x.protected;
+
   return `<div class="row">
     <div class="stripe ${RISK_LETTER[x.risk]}"></div>
     <div>
@@ -943,25 +1021,39 @@ function rowHTML(x){
       <div class="marks">
         <span class="chip">${esc(x.kindLabel)} · ${esc(x.size)}</span>
         <span class="chip">${esc(x.dir)}</span>
-        <span class="chip">${esc(x.origin)}</span>
+        <span class="chip">${esc(МЕДИУМ(x))}</span>
+        ${короткий?'<span class="chip g" title="Текст целиком помещается в строку — открывать карточку не нужно">коротко</span>':''}
         ${x.sample?'<span class="chip a" title="Отмечен для точечного контроля: можно посмотреть и убедиться, что анализатор не ошибся">точечный контроль</span>':''}
         ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
       </div>
     </div>
     <div>
-      <div class="sum">${esc(x.sum)}</div>
-      <div class="why">${esc(x.why)} <button class="link" onclick="toggleFold('${x.id}')">подробнее</button></div>
-      <div class="fold" id="f-${x.id}">
-        ${esc(x.full)}<br><br>
-        <b>Основание:</b> ${esc(x.basis)}${x.conf?` · уверенность анализатора ${x.conf}%`:''}
-      </div>
+      ${короткий
+        ? `<div class="целиком">${hlText(целиком(x), x.hl)}</div>
+           <div class="why">${esc(x.why)}${x.tr?` · перевод: ${esc(x.tr)}`:''}</div>`
+        : `<div class="sum">${esc(x.sum)}</div>
+           <div class="why">${esc(x.why)} <button class="link" onclick="toggleFold('${x.id}')">подробнее</button></div>
+           <div class="fold" id="f-${x.id}">
+             ${esc(x.full)}<br><br>
+             <b>Основание:</b> ${esc(x.basis)}${x.conf?` · уверенность анализатора ${x.conf}%`:''}
+           </div>`}
     </div>
     <div class="acts">
-      <button class="btn sm" onclick="openContext('${x.id}')" title="Другие материалы этих людей">Контекст</button>
+      ${короткий && x.risk !== 'red'
+        ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>`
+        : `<button class="btn sm" onclick="openContext('${x.id}')" title="Другие материалы этих людей">Контекст</button>`}
       <button class="btn sm" onclick="openPrint('${x.id}')" title="Напечатать материал">Печать</button>
-      <button class="btn sm primary" onclick="openCard('${x.id}')">Открыть</button>
+      <button class="btn sm ${короткий && x.risk !== 'red' ? '' : 'primary'}" onclick="openCard('${x.id}')">Открыть</button>
     </div>
   </div>`;
+}
+
+/* Носитель письма словами: бумага — с указанием, откуда она пришла. */
+function МЕДИУМ(x){
+  if (x.kind !== 'text') return x.origin;
+  return x.medium === 'paper'
+    ? 'бумага · ' + (x.paperSource || 'распознано')
+    : 'электронное';
 }
 function toggleFold(id){document.getElementById('f-'+id)?.classList.toggle('open')}
 function setStack(k){S.stack=k; S.shown=30; render()}
@@ -1636,6 +1728,23 @@ function активностьЧеловека(p){
 }
 
 /* живые данные, которые меняются действиями пользователя */
+/* ---------------------------------------------------------------
+   ИСТОРИЯ ПЕРЕПИСКИ ЗА ТРИ МЕСЯЦА
+
+   Полных текстов здесь нет и не нужно: архив и досье работают
+   с карточкой отправления. Поля закодированы числами ради объёма,
+   расшифровка — в data/generate.js.
+   --------------------------------------------------------------- */
+const HIST = window.OSNOVA_HISTORY || { окноДней: 0, сводка: null, записи: [] };
+const H_КАНАЛ = ['письмо', 'голосовое', 'видео'];
+const H_РЕШЕНИЕ = ['вручено или отправлено', 'вымарано частично', 'не допущено'];
+
+/* Переписка одного человека за три месяца. */
+function историяЧеловека(pid){
+  const n = Number(String(pid).replace(/\D/g, ''));
+  return HIST.записи.filter(z => z[2] === n);
+}
+
 const LIVE = {
   calls: (ROL.calls || []).map(c => ({ ...c })),
   breaks: (ROL.autoBreaks || []).map(b => ({ ...b })),
@@ -2114,9 +2223,35 @@ function renderFacility(){
 
     ${блокНагрузки()}
 
+    ${блокИстории()}
+
     <div class="note" style="margin-top:20px">Сводка не показывает то, что идёт нормально.
       Если раздел пуст — значит, вмешательства не требуется.</div>
   `;
+}
+
+/* Три месяца потока — то, чего не видно за одной сменой. */
+function блокИстории(){
+  const с = HIST.сводка;
+  if (!с) return '';
+  const доля = n => Math.round(n / с.всего * 100) + '%';
+  return `
+    <h2 class="sect">Переписка за три месяца</h2>
+    <div class="card">
+      <div class="kv">
+        <div class="k">Всего отправлений</div><div>${с.всего} за ${с.дней} дней · ${с.вДень} в день</div>
+        <div class="k">Бумажных</div><div>${с.бумага} · ${доля(с.бумага)} — пишут от руки или присылают почтой</div>
+        <div class="k">Электронных</div><div>${с.цифра} · ${доля(с.цифра)} — через сервисы ЗТ</div>
+        <div class="k">Голосовых и видео</div><div>${с.голос + с.видео} · ${доля(с.голос + с.видео)} — в работу идёт расшифровка</div>
+        <div class="k">Вручено и отправлено</div><div>${с.вручено} · ${доля(с.вручено)}</div>
+        <div class="k">Вымарано частично</div><div>${с.вымарано} · ${доля(с.вымарано)}</div>
+        <div class="k">Не допущено</div><div>${с.недопущено} · ${доля(с.недопущено)}</div>
+        <div class="k">Объём текста</div><div>${(с.знаков / 1000000).toFixed(1)} млн знаков — это ${Math.round(с.знаков / 1800)} страниц</div>
+      </div>
+      <div class="note warn" style="margin-bottom:0">Семь десятых потока — бумага. Пока она не станет
+        электронной, распознавание письменного текста остаётся обязательным звеном:
+        от его качества зависит всё, что делает анализатор дальше.</div>
+    </div>`;
 }
 
 function renderAudit(){
