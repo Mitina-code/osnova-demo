@@ -799,6 +799,7 @@ const РАЗДЕЛЫ = {
   profile:     [ICON.staff,      'Профиль'],
   signing:     [ICON.legal,      'Акты на подпись'],
   feed:        [ICON.feed,       'Персональная лента'],
+  handed:      [ICON.inbox,      'От цензора'],
   people:      [ICON.people,     'Люди и связи'],
   groups:      [ICON.groups,     'Группы и наблюдение'],
   opreports:   [ICON.reports,    'Отчёты и подборки'],
@@ -819,7 +820,7 @@ const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
                 разделы:['queue','assignments','register','archive','reports','channel','support','legal'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
-                разделы:['feed','assignments','people','groups','opreports','channel','support','legal'] },
+                разделы:['feed','handed','assignments','people','groups','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
                 разделы:['facility','signing','assignments','audit','services','staff','complaints','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
@@ -848,6 +849,7 @@ function renderNav(){
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
     staff: LIVE.staff.filter(x=>x.review).length,
     signing: актовЖдёт(),
+    handed: переданные().length,
     complaints: LIVE.complaints.filter(c=>c.status!=='закрыто').length,
   };
   document.getElementById('nav').innerHTML = роль.разделы.map(v => {
@@ -899,7 +901,8 @@ function renderQueue(){
     </div>
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div><div class="k">Поступило за смену</div><div class="v tnum">${S.total}</div><div class="d">материалов</div></div>
-      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div><div class="k">Разобрано</div><div class="v tnum">${decidedCount()}</div><div class="d">осталось ${leftAll().length}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div><div class="k">Разобрано</div><div class="v tnum">${decidedCount() - переданные().length}</div>
+        <div class="d">осталось ${leftAll().length}${переданные().length ? ' · у оперативника ' + переданные().length : ''}</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.queue}</div><div class="k">Без открытия карточки</div><div class="v tnum">${autoCount()}</div><div class="d">${decidedCount()? Math.round(autoCount()/decidedCount()*100):0}% от разобранного</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.time}</div><div class="k">Сэкономлено</div><div class="v">${savedText()}</div><div class="d">рабочего времени</div></div>
     </div>
@@ -1042,7 +1045,7 @@ function rowHTML(x){
       ${короткий && x.risk !== 'red'
         ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>`
         : `<button class="btn sm" onclick="openContext('${x.id}')" title="Другие материалы этих людей">Контекст</button>`}
-      <button class="btn sm" onclick="openPrint('${x.id}')" title="Напечатать материал">Печать</button>
+      <button class="btn sm" onclick="передатьОперативнику('${x.id}')" title="Передать оперативному сотруднику">Оперативнику</button>
       <button class="btn sm ${короткий && x.risk !== 'red' ? '' : 'primary'}" onclick="openCard('${x.id}')">Открыть</button>
     </div>
   </div>`;
@@ -1165,6 +1168,7 @@ function renderCard(){
     <div class="bar"><button class="btn sm" onclick="go('queue')">← В ленту</button>
       <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>
       <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
+      <button class="btn sm" onclick="передатьОперативнику('${x.id}')">Оперативнику</button>
       <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
       ${x.sample?'<span class="chip a">точечный контроль</span>':''}
       ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
@@ -1371,13 +1375,20 @@ function renderArchive(){
             <div class="marks">
               <span class="chip ${x.status === 'allowed' ? 'g' : x.status === 'denied' ? 'r' : 'o'}">${
                 x.status === 'allowed' ? 'разрешено' : x.status === 'denied' ? 'не допущено' : 'пропущено с изъятием'}</span>
+              ${x.opDecision ? '<span class="chip a">решил оперативный сотрудник</span>' : ''}
+              ${x.opCase ? `<span class="chip a">приобщено к делу ${esc(x.opCase)}</span>` : ''}
             </div>
           </div>
-          <div><div class="sum">${esc(x.sum)}</div><div class="why">${esc(x.why)}</div></div>
+          <div><div class="sum">${esc(x.sum)}</div>
+            <div class="why">${x.opDecision
+              ? `Передано вами ${esc(x.handAt || '')}: «${esc(x.handNote || '')}». Решение принято ${esc(x.opAt || '')}.`
+              : esc(x.why)}</div></div>
           <div class="acts">
             <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
             <button class="btn sm" onclick="openCard('${x.id}')">Посмотреть</button>
-            <button class="btn sm primary" onclick="reviseDecision('${x.id}')">Пересмотреть</button>
+            ${x.opDecision
+              ? '<span class="chip">решение оперативной службы</span>'
+              : `<button class="btn sm primary" onclick="reviseDecision('${x.id}')">Пересмотреть</button>`}
           </div>
         </div>`).join('')}
       </div>
@@ -3639,6 +3650,219 @@ function печатьАктаОчереди(id){
   печатьДокумента(бланкАкта(актИзОчереди(a), true));
 }
 
+/* ====================================================================
+   ПЕРЕДАЧА МАТЕРИАЛА ОПЕРАТИВНОМУ СОТРУДНИКУ
+
+   Анализатор раскладывает по стопкам, но подозрение бывает и у зелёного:
+   цензор знает контекст, которого у машины нет. Поэтому передать можно
+   материал любой стопки.
+
+   Что происходит с материалом:
+     — он уходит из стопок цензора и ждёт решения оперативника;
+     — срок по нему продолжает идти, поэтому у передачи видно время;
+     — решение принимает оперативник: допустить или не допустить;
+     — недопуск здесь, как и у цензора, порождает акт на подпись.
+
+   Приобщение к делу — отдельное действие, а не третий вариант решения.
+   Часто письмо как раз пропускают, чтобы переписка продолжалась, а копию
+   кладут в дело. Поэтому «прикрепить к делу» сочетается с любым решением.
+   ==================================================================== */
+
+const ДЕЛА = (ROL.cases || []).map(d => ({ ...d }));
+
+function переданные(){ return S.queue.filter(x => x.status === 'handed'); }
+function решённыеОперативником(){ return S.queue.filter(x => x.opDecision); }
+
+/* ---------- сторона цензора ---------- */
+
+function передатьОперативнику(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  modal(`
+    <div class="mh">
+      <div><h3>Передать оперативному сотруднику</h3>
+        <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${esc(x.id)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="card" style="background:var(--bg); margin-bottom:16px">
+        <div class="kv">
+          <div class="k">Оценка анализатора</div>
+          <div><span class="chip ${RISK_LETTER[x.risk]}">${esc(RISK_ONE[x.risk])}</span> ${esc(x.sum)}</div>
+          <div class="k">Отряд</div><div>${esc(x.unit)}</div>
+          <div class="k">Канал</div><div>${esc(x.kindLabel)}, ${esc(x.dir.toLowerCase())}</div>
+        </div>
+      </div>
+      <label class="fld">Что вас насторожило
+        <textarea id="hnote" placeholder="Своими словами: что именно показалось подозрительным"></textarea></label>
+      <div class="note">Материал уйдёт из ваших стопок и будет ждать решения оперативного
+        сотрудника. Срок по нему продолжает идти, поэтому передавайте сразу, а не в конце смены.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="подтвердитьПередачу('${x.id}')">Передать</button>
+    </div>`);
+}
+
+function подтвердитьПередачу(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const поле = document.getElementById('hnote');
+  x.handNote = (поле && поле.value.trim()) || 'Без пояснения';
+  x.handAt = nowStamp();
+  x.handBy = профиль().name;
+  x.status = 'handed';
+  if (S.conveyor) S.conveyor = S.conveyor.filter(i => i !== id);
+  closeModal();
+  if (S.view === 'card') go('queue'); else render();
+  toast('Передано оперативному сотруднику. Ответ придёт в журнал решений.');
+}
+
+/* ---------- сторона оперативника ---------- */
+
+function renderHanded(){
+  const ждут = переданные();
+  const решены = решённыеОперативником();
+
+  const карточка = x => `
+    <div class="row">
+      <div class="stripe ${RISK_LETTER[x.risk]}"></div>
+      <div>
+        <div class="who">${esc(x.from)} → ${esc(x.to)}</div>
+        <div class="meta">${esc(x.unit)} · ${esc(x.dir.toLowerCase())} ${esc(x.channel)} · передано ${esc(x.handAt || '')}</div>
+        <div class="marks">
+          <span class="chip">${esc(x.id)}</span>
+          <span class="chip ${RISK_LETTER[x.risk]}">${esc(RISK_ONE[x.risk])} у анализатора</span>
+          <span class="chip">${esc(МЕДИУМ(x))}</span>
+        </div>
+      </div>
+      <div>
+        <div class="sum">${esc(x.handBy || 'Цензор')}: ${esc(x.handNote || '')}</div>
+        <div class="why">Анализатор: ${esc(x.sum)}</div>
+      </div>
+      <div class="acts">
+        <button class="btn sm primary" onclick="разобратьПереданное('${x.id}')">Разобрать</button>
+      </div>
+    </div>`;
+
+  const решённая = x => `
+    <div class="row">
+      <div class="stripe ${x.opDecision === 'allow' ? 'g' : 'r'}"></div>
+      <div><div class="who">${esc(x.from)} → ${esc(x.to)}</div>
+        <div class="meta">${esc(x.id)} · решено ${esc(x.opAt || '')}</div></div>
+      <div><div class="sum">${x.opDecision === 'allow' ? 'Допущено' : 'Не допущено'}</div>
+        ${x.opCase ? `<div class="why">Приобщено к делу ${esc(x.opCase)}</div>` : '<div class="why">К делу не приобщалось</div>'}</div>
+      <div class="acts"></div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>От цензора</h1>
+      <p>Материалы, которые цензор сочла подозрительными и передала вам. Решение по ним — ваше.</p></div>
+
+    ${ждут.length ? `<div class="note warn"><b>Ждут решения: ${ждут.length}.</b>
+      Пока вы не решили, материал не доставлен, а срок по нему идёт.</div>` : ''}
+
+    <h2 class="sect">Ждут решения · ${ждут.length}</h2>
+    ${ждут.length
+      ? `<div class="rows">${ждут.map(карточка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Переданного нет</b>
+         <div>Цензор передаёт сюда то, что настораживает её саму, независимо от стопки.</div></div>`}
+
+    ${решены.length ? `<h2 class="sect">Решено · ${решены.length}</h2>
+      <div class="rows">${решены.map(решённая).join('')}</div>` : ''}
+  `;
+}
+
+/* Разбор переданного: содержимое целиком, решение и приобщение к делу. */
+function разобратьПереданное(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const тело = x.ts
+    ? `<div class="ts">${x.ts.map(([t, s], i) =>
+        `<div class="t tnum">${esc(t)}</div><div>${x.hlts.includes(i) ? `<mark>${esc(s)}</mark>` : esc(s)}</div>`).join('')}</div>`
+    : `<div class="body-text">${hlText(x.text || '—', x.hl)}</div>`;
+
+  const свои = ДЕЛА.filter(d => d.pid === x.pid);
+  const прочие = ДЕЛА.filter(d => d.pid !== x.pid);
+
+  modal(`
+    <div class="mh">
+      <div><h3>Материал от цензора</h3>
+        <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${esc(x.id)} · ${esc(x.unit)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note"><b>${esc(x.handBy || 'Цензор')}:</b> ${esc(x.handNote || '')}</div>
+
+      <div class="card" style="background:var(--bg)">
+        <h3>Что сказал анализатор</h3>
+        <div class="kv">
+          <div class="k">Оценка</div>
+          <div><span class="chip ${RISK_LETTER[x.risk]}">${esc(RISK_ONE[x.risk])}</span></div>
+          <div class="k">Резюме</div><div>${esc(x.sum)}</div>
+          <div class="k">Основание</div><div>${esc(x.basis)}</div>
+        </div>
+      </div>
+
+      <h3 style="margin:18px 0 10px">Материал</h3>
+      ${тело}
+      ${x.tr ? `<h3 style="margin:18px 0 10px">Перевод</h3><div class="body-text">${esc(x.tr)}</div>` : ''}
+
+      <h3 style="margin:18px 0 10px">Приобщить к делу</h3>
+      <p style="color:var(--muted); margin:0 0 10px; font-size:14.5px">
+        Приобщение не заменяет решения по письму. Письмо можно и пропустить,
+        и приобщить копию — переписка при этом продолжается.</p>
+      <label class="opt on" id="case-none" onclick="выбратьДело('')">
+        <b>Не приобщать</b><span>Решение по письму принимается без документирования</span></label>
+      ${свои.map(d => `
+        <label class="opt" id="case-${d.id}" onclick="выбратьДело('${d.no}')">
+          <b>${esc(d.no)} — ${esc(d.title)}</b>
+          <span>${esc(d.person)}, ${esc(d.unit)} · открыто ${esc(d.opened)} · приобщено документов: ${d.attached}</span></label>`).join('')}
+      ${свои.length ? '' : `<div class="note warn">На этого человека дела не заведено.
+        Можно приобщить к делу по другому фигуранту, если материал касается его.</div>`}
+      ${прочие.slice(0, 4).map(d => `
+        <label class="opt" id="case-${d.id}" onclick="выбратьДело('${d.no}')">
+          <b>${esc(d.no)} — ${esc(d.title)}</b>
+          <span>${esc(d.person)}, ${esc(d.unit)} · открыто ${esc(d.opened)}</span></label>`).join('')}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn danger" onclick="решениеОперативника('${x.id}','deny')">Не допустить</button>
+      <button class="btn primary" onclick="решениеОперативника('${x.id}','allow')">Допустить</button>
+    </div>`);
+  S.выбранноеДело = '';
+}
+
+function выбратьДело(no){
+  S.выбранноеДело = no;
+  document.querySelectorAll('.mb .opt').forEach(el => el.classList.remove('on'));
+  const цель = no
+    ? [...document.querySelectorAll('.mb .opt')].find(el => el.innerText.indexOf(no) === 0)
+    : document.getElementById('case-none');
+  if (цель) цель.classList.add('on');
+}
+
+function решениеОперативника(id, что){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const дело = S.выбранноеДело || '';
+  x.opDecision = что;
+  x.opCase = дело || null;
+  x.opAt = nowStamp();
+  x.status = что === 'allow' ? 'allowed' : 'denied';
+  if (дело) { const d = ДЕЛА.find(z => z.no === дело); if (d) d.attached++; }
+
+  /* Решение возвращается в журнал цензора: она должна видеть, чем кончилось. */
+  S.log.unshift({
+    id: x.id, from: x.from, to: x.to,
+    decision: что,
+    basis: (что === 'deny' ? 'решение оперативного сотрудника: не допускать' : 'решение оперативного сотрудника: допустить')
+      + (дело ? '; приобщено к делу ' + дело : ''),
+    by: 'Петров А.С., оперативный сотрудник', at: nowStamp(), group: 1,
+    act: что === 'deny' ? String(++ACT_NO) : null,
+  });
+
+  S.выбранноеДело = '';
+  closeModal(); render();
+  toast(что === 'allow'
+    ? 'Допущено' + (дело ? '. Копия приобщена к делу ' + дело : '')
+    : 'Не допущено. Акт уйдёт на подпись' + (дело ? '; копия приобщена к делу ' + дело : ''));
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -3655,6 +3879,7 @@ function render(){
     legal:       ['Нормативные акты', 'Документы, на которые ссылаются основания'],
     support:     ['Поддержка', 'Если что-то не работает'],
     feed:        ['Персональная лента', 'События, где нужен человек'],
+    handed:      ['От цензора', 'Материалы, переданные на оперативное решение'],
     people:      ['Люди и связи', 'Досье и перечни контактов'],
     groups:      ['Группы и наблюдение', 'Автоматические и ручные подборки'],
     group:       ['Группа наблюдения', 'Состав, правило и живые разговоры'],
@@ -3679,7 +3904,7 @@ function render(){
      staff:renderStaff, complaints:renderComplaints,
      live:renderLive, completed:renderCompleted,
      register:renderRegister, profile:renderProfile,
-     signing:renderSigning })[S.view]();
+     signing:renderSigning, handed:renderHanded })[S.view]();
   window.scrollTo({top:0});
 }
 собратьОперативника();
