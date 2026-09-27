@@ -1180,7 +1180,6 @@ function renderCard(){
     <div class="bar"><button class="btn sm" onclick="go('queue')">← В ленту</button>
       <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>
       <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
-      <button class="btn sm" onclick="передатьОперативнику('${x.id}')">Оперативнику</button>
       <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
       ${x.sample?'<span class="chip a">точечный контроль</span>':''}
       ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
@@ -1214,7 +1213,10 @@ function renderCard(){
             <button class="btn primary" onclick="decide('${x.id}','allow')">Разрешить</button>
             <button class="btn danger" onclick="decide('${x.id}','deny')">Не допустить</button>
             ${x.kind==='text' && !x.protected ? `<button class="btn" onclick="openRedact('${x.id}')">Вымарать фрагмент</button>`:''}
+            ${x.protected ? '' : `<button class="btn" onclick="передатьОперативнику('${x.id}')">Оперативнику</button>`}
           </div>
+          ${x.protected ? '' : `<div class="top-sub" style="margin-top:10px">Передача оперативнику —
+            когда решение зависит от сведений, которых у вас нет. Материал уйдёт из ваших стопок.</div>`}
         </div>
       </div>
     </div>`;
@@ -3856,8 +3858,21 @@ function подтвердитьПередачу(id){
   x.handAt = nowStamp();
   x.handBy = профиль().name;
   x.status = 'handed';
-  if (S.conveyor) S.conveyor = S.conveyor.filter(i => i !== id);
   closeModal();
+
+  if (S.conveyor) {
+    S.conveyor = S.conveyor.filter(i => i !== id);
+    if (S.conveyor.length) {
+      toast('Передано оперативному сотруднику. Следующий материал — осталось ' + S.conveyor.length + '.');
+      openCard(S.conveyor[0]);
+      return;
+    }
+    S.conveyor = null;
+    toast('Передано оперативному сотруднику. Материалы разобраны.');
+    go('queue');
+    return;
+  }
+
   if (S.view === 'card') go('queue'); else render();
   toast('Передано оперативному сотруднику. Ответ придёт в журнал решений.');
 }
