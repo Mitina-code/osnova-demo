@@ -171,7 +171,7 @@ svg{flex:none}
 .row .marks{display:flex; gap:6px; flex-wrap:wrap; margin-top:9px}
 .row .sum{font-weight:600; margin-bottom:4px; font-size:14.5px}
 .row .why{color:var(--muted); font-size:13.5px}
-.row .acts{display:flex; gap:8px; align-items:center}
+.row .acts{display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end}
 .link{background:none; border:0; color:var(--primary); font-size:13.5px; font-weight:600; padding:0 0 0 6px}
 .link:hover{text-decoration:underline; text-underline-offset:2px}
 .fold{display:none; margin-top:10px; padding:12px 14px; background:var(--bg);
@@ -630,6 +630,7 @@ function fromContract(m) {
   return {
     id: m.id,
     pid: m.pid,
+    ci: m.ci,
     risk: a.risk,
     at: hhmm(m.at),
     from: уч ? уч.отправитель.name : '—',
@@ -1043,8 +1044,8 @@ function rowHTML(x){
     </div>
     <div class="acts">
       ${короткий && x.risk !== 'red'
-        ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>`
-        : `<button class="btn sm" onclick="openContext('${x.id}')" title="Другие материалы этих людей">Контекст</button>`}
+        ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>` : ''}
+      <button class="btn sm" onclick="openContext('${x.id}')" title="История переписки за три месяца">Контекст</button>
       <button class="btn sm" onclick="передатьОперативнику('${x.id}')" title="Передать оперативному сотруднику">Оперативнику</button>
       <button class="btn sm ${короткий && x.risk !== 'red' ? '' : 'primary'}" onclick="openCard('${x.id}')">Открыть</button>
     </div>
@@ -1681,21 +1682,145 @@ function openPrint(id){
       <button class="btn primary" onclick="doPrint()">Печать</button></div>`);
 }
 
+/* ====================================================================
+   КОНТЕКСТ — ИСТОРИЯ ПЕРЕПИСКИ ЗА ТРИ МЕСЯЦА
+
+   Одно письмо почти ничего не значит. Значит ряд: как часто пишут,
+   кому, чем это обычно кончалось, не появился ли адресат впервые.
+   Эти сведения лежат в data-history.js за 90 дней и разбираются здесь.
+
+   Контекст нужен одинаково и длинному письму, и короткой фразе:
+   у фразы своего содержания почти нет, и кроме истории судить не по чему.
+   ==================================================================== */
+
+const H_НАПРАВЛЕНИЕ = ['входящее', 'исходящее'];
+const H_НОСИТЕЛЬ = ['бумага', 'электронное'];
+const H_РИСК = ['green', 'orange', 'red'];
+
+/* Дата записи: в истории хранится, сколько дней назад это было. */
+function hДата(дней){
+  const d = new Date(2026, 8, 25 - дней);
+  return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear();
+}
+
+/* Вся история человека и та её часть, что с этим же контактом. */
+function контекстПереписки(x){
+  const все = архивЧеловека(x.pid);
+  const сЭтим = все.filter(z => z[3] === x.ci);
+  const счёт = список => {
+    const c = { вручено: 0, вымарано: 0, недопущено: 0 };
+    список.forEach(z => { c[['вручено', 'вымарано', 'недопущено'][z[8]]]++; });
+    return c;
+  };
+  const дни = сЭтим.map(z => z[1]);
+  return {
+    все, сЭтим,
+    решенияВсе: счёт(все),
+    решенияСЭтим: счёт(сЭтим),
+    первое: дни.length ? Math.max(...дни) : null,
+    последнее: дни.length ? Math.min(...дни) : null,
+  };
+}
+
+/* Короткая сводка одной строкой — её показывают и в разборе у оперативника. */
+function сводкаКонтекста(x){
+  const к = контекстПереписки(x);
+  if (!к.все.length) return '<div class="note warn" style="margin-bottom:0"><b>Переписки за три месяца нет.</b> Это первое отправление этого человека в архиве.</div>';
+
+  const новый = к.сЭтим.length === 0;
+  const недоп = к.решенияСЭтим.недопущено;
+  const тревожно = новый || недоп > 0;
+
+  return `<div class="note ${тревожно ? 'warn' : 'ok'}" style="margin-bottom:0">
+    ${новый
+      ? `<b>С этим адресатом переписки раньше не было.</b> У человека за три месяца ${к.все.length}
+         ${plural(к.все.length, 'отправление', 'отправления', 'отправлений')}, но все — с другими контактами.`
+      : `<b>С этим адресатом за три месяца: ${к.сЭтим.length}
+         ${plural(к.сЭтим.length, 'отправление', 'отправления', 'отправлений')}.</b>
+         Первое ${hДата(к.первое)}, последнее ${hДата(к.последнее)}.
+         ${недоп ? `Не допускалось ${недоп} ${plural(недоп, 'раз', 'раза', 'раз')}.` : 'Недопусков не было.'}
+         ${к.решенияСЭтим.вымарано ? `Вымарывалось ${к.решенияСЭтим.вымарано}.` : ''}`}
+  </div>`;
+}
+
 function openContext(id){
   const x = S.queue.find(m => m.id === id); if (!x) return;
-  const related = S.queue.filter(z => z.id !== id && (z.from === x.from || z.to === x.to) && !z.protected).slice(0, 8);
+  const к = контекстПереписки(x);
+  const чел = POP.поId[x.pid];
+  const контакт = чел && чел.contacts[x.ci];
+
+  /* Лента переписки именно с этим человеком: последние 20 отправлений. */
+  const лента = к.сЭтим
+    .slice()
+    .sort((a, b) => a[1] - b[1])        // меньше дней назад — значит свежее
+    .slice(0, 20)
+    .map(z => `
+    <tr>
+      <td class="tnum">${hДата(z[1])}</td>
+      <td>${H_НАПРАВЛЕНИЕ[z[4]]}</td>
+      <td>${H_КАНАЛ[z[5]]}<div class="top-sub">${H_НОСИТЕЛЬ[z[6]]}</div></td>
+      <td class="tnum">${z[9]} зн.</td>
+      <td><span class="chip ${RISK_LETTER[H_РИСК[z[7]]]}">${RISK_ONE[H_РИСК[z[7]]]}</span></td>
+      <td>${H_РЕШЕНИЕ[z[8]]}</td>
+    </tr>`).join('');
+
+  /* Другие контакты того же человека — с кем он ещё переписывается. */
+  const поКонтактам = {};
+  к.все.forEach(z => { поКонтактам[z[3]] = (поКонтактам[z[3]] || 0) + 1; });
+  const другие = Object.keys(поКонтактам)
+    .filter(ci => Number(ci) !== x.ci)
+    .sort((a, b) => поКонтактам[b] - поКонтактам[a])
+    .slice(0, 6)
+    .map(ci => {
+      const c = чел && чел.contacts[Number(ci)];
+      return `<li>${esc(c ? c.name : 'контакт ' + ci)}${c && c.role ? ' · ' + esc(c.role) : ''}
+        — ${поКонтактам[ci]} ${plural(поКонтактам[ci], 'отправление', 'отправления', 'отправлений')}
+        ${c && !c.verified ? '<span class="chip o" style="margin-left:6px">не подтверждён</span>' : ''}</li>`;
+    }).join('');
+
+  /* Материалы той же смены — их можно открыть прямо отсюда. */
+  const смена = S.queue.filter(z => z.id !== id && z.pid === x.pid && !z.protected).slice(0, 6);
+
   modal(`
     <div class="mh"><div><h3>Контекст переписки</h3>
-      <div class="top-sub">${esc(x.from)} → ${esc(x.to)}</div></div>
+      <div class="top-sub">${esc(чел ? чел.name : x.to)} · ${esc(x.unit)}${контакт ? ' · с ' + esc(контакт.name) : ''}</div></div>
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">
-      <div class="note">Переписка с защитником в контекст не включается — её содержание не раскрывается.</div>
-      ${related.length ? `<div class="clist" style="margin-top:14px">${related.map(z => `
-        <div class="citem"><div>
-          <div class="w"><span class="chip ${RISK_LETTER[z.risk]}">${RISK_ONE[z.risk]}</span> ${esc(z.from)} → ${esc(z.to)}</div>
-          <div class="s">${z.id} · ${z.at} · ${esc(z.sum)}</div>
-        </div><button class="btn sm" onclick="closeModal(); openCard('${z.id}')">Открыть</button></div>`).join('')}</div>`
-        : '<div class="top-sub" style="margin-top:14px">Других материалов этих людей за смену нет.</div>'}
+      ${сводкаКонтекста(x)}
+
+      <div class="stats" style="margin-top:16px">
+        <div class="stat"><div class="k">Всего за три месяца</div><div class="v tnum">${к.все.length}</div>
+          <div class="d">со всеми контактами</div></div>
+        <div class="stat"><div class="k">С этим адресатом</div><div class="v tnum">${к.сЭтим.length}</div>
+          <div class="d">${к.все.length ? Math.round(к.сЭтим.length / к.все.length * 100) : 0}% переписки</div></div>
+        <div class="stat"><div class="k">Не допускалось</div><div class="v tnum">${к.решенияВсе.недопущено}</div>
+          <div class="d">по всем контактам</div></div>
+        <div class="stat"><div class="k">Вымарывалось</div><div class="v tnum">${к.решенияВсе.вымарано}</div>
+          <div class="d">частичное изъятие</div></div>
+      </div>
+
+      ${к.сЭтим.length ? `
+        <h3 style="margin:18px 0 10px">Переписка с этим адресатом</h3>
+        <div class="журнал">
+          <table class="журнал-таб" style="min-width:0">
+            <thead><tr><th>Дата</th><th>Направление</th><th>Канал</th><th>Объём</th><th>Оценка</th><th>Решение</th></tr></thead>
+            <tbody>${лента}</tbody>
+          </table>
+        </div>
+        ${к.сЭтим.length > 20 ? `<div class="top-sub" style="margin-top:8px">показаны последние 20 из ${к.сЭтим.length}</div>` : ''}` : ''}
+
+      ${другие ? `<h3 style="margin:18px 0 10px">С кем ещё переписывается</h3>
+        <ul class="plain">${другие}</ul>` : ''}
+
+      ${смена.length ? `<h3 style="margin:18px 0 10px">Ещё в этой смене</h3>
+        <div class="clist">${смена.map(z => `
+          <div class="citem"><div>
+            <div class="w"><span class="chip ${RISK_LETTER[z.risk]}">${RISK_ONE[z.risk]}</span> ${esc(z.from)} → ${esc(z.to)}</div>
+            <div class="s">${z.id} · ${z.at} · ${esc(z.sum)}</div>
+          </div><button class="btn sm" onclick="closeModal(); openCard('${z.id}')">Открыть</button></div>`).join('')}</div>` : ''}
+
+      <div class="note" style="margin-top:16px">Переписка с защитником в контекст не включается —
+        её содержание не раскрывается, фиксируются только факт и дата.</div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
 }
@@ -1751,7 +1876,7 @@ const H_КАНАЛ = ['письмо', 'голосовое', 'видео'];
 const H_РЕШЕНИЕ = ['вручено или отправлено', 'вымарано частично', 'не допущено'];
 
 /* Переписка одного человека за три месяца. */
-function историяЧеловека(pid){
+function архивЧеловека(pid){
   const n = Number(String(pid).replace(/\D/g, ''));
   return HIST.записи.filter(z => z[2] === n);
 }
@@ -3788,6 +3913,9 @@ function разобратьПереданное(id){
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">
       <div class="note"><b>${esc(x.handBy || 'Цензор')}:</b> ${esc(x.handNote || '')}</div>
+
+      <h3 style="margin:18px 0 10px">Контекст переписки</h3>
+      ${сводкаКонтекста(x)}
 
       <div class="card" style="background:var(--bg)">
         <h3>Что сказал анализатор</h3>
