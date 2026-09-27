@@ -199,6 +199,7 @@ svg{flex:none}
   padding:22px 24px; margin-bottom:14px}
 .card h3{margin:0 0 14px; font-size:16px; font-weight:650}
 .split{display:grid; grid-template-columns:1.5fr 1fr; gap:14px; align-items:start}
+.split.поровну{grid-template-columns:1fr 1fr}
 .body-text{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
   padding:18px 20px; line-height:1.8; font-size:15.5px}
 mark{background:var(--soft-beige); color:#8A5A0B; border-bottom:2px solid var(--warning);
@@ -215,13 +216,23 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 /* ---------- вымарывание ---------- */
 .redact{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
   padding:18px 20px; line-height:2.1; font-size:15.5px}
-.frag{border-radius:6px; padding:2px 4px; cursor:pointer; border-bottom:1px dashed var(--border);
+.frag{border-radius:6px; padding:1px 3px; cursor:pointer; border-bottom:1px dashed var(--border);
   transition:background .1s}
 .frag:hover{background:var(--lilac)}
-.frag.cut{background:var(--text); color:var(--text); border-bottom-color:transparent}
+/* Изъятое в оригинале — зачёркнуто и осталось читаемым. */
+.frag.cut{
+  background:var(--soft-pink); color:var(--danger); border-bottom-color:transparent;
+  text-decoration:line-through; text-decoration-thickness:2px;
+  text-decoration-color:var(--danger);
+}
 .preview{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px;
   padding:18px 20px; line-height:1.95; font-size:15.5px}
-.blk{background:var(--text); border-radius:4px; color:transparent; user-select:none}
+/* В экземпляре адресата изъятого текста нет вовсе — только полосы.
+   Полоса на каждое слово, чтобы строка переносилась как обычный текст
+   и было видно, сколько именно закрашено. */
+.blk{display:inline-block; height:.95em; vertical-align:-0.12em;
+  background:var(--text); border-radius:2px}
+.blk-группа{white-space:normal}
 
 /* ---------- журнал ---------- */
 .log{display:flex; flex-direction:column; gap:10px}
@@ -1236,6 +1247,15 @@ function openRedact(id){S.redactId=id; S.redactCut=[]; S.view='redact'; render()
 function splitFrags(t){
   return t.split(/(?<=[.!?])\s+/).filter(Boolean);
 }
+
+/* Закрашенный фрагмент в экземпляре адресата: самого текста нет,
+   есть полосы по числу и длине слов. Скопировать оттуда нечего. */
+function полосы(фрагмент){
+  const слова = String(фрагмент).split(/\s+/).filter(Boolean);
+  return '<span class="blk-группа" title="изъятый фрагмент">'
+    + слова.map(w => `<span class="blk" style="width:${Math.max(1, w.length)}ch"></span>`).join(' ')
+    + '</span>';
+}
 function renderRedact(){
   const x = S.queue.find(m=>m.id===S.redactId);
   if(!x||!x.text){ go('queue'); return }
@@ -1248,15 +1268,17 @@ function renderRedact(){
       <h3>Вымарывание фрагмента</h3>
       <div class="top-sub">${esc(x.from)} → ${esc(x.to)} · ${x.id}</div>
     </div>
-    <div class="note">Отметьте предложения, которые нужно изъять.</div>
-    <div class="split">
+    <div class="note">Отметьте предложения, которые нужно изъять.
+      Слева — оригинал: он хранится целиком, изъятое в нём зачёркнуто и остаётся читаемым.
+      Справа — экземпляр адресата: в нём изъятого текста нет, только полосы.</div>
+    <div class="split поровну">
       <div class="card">
         <h3>Исходный текст</h3>
         <div class="redact">${frags.map((f,i)=>`<span class="frag ${cut.includes(i)?'cut':''}" onclick="toggleFrag(${i})" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFrag(${i})}">${esc(f)}</span> `).join('')}</div>
       </div>
       <div class="card">
         <h3>Что увидит адресат</h3>
-        <div class="preview">${frags.map((f,i)=>cut.includes(i)?`<span class="blk">${esc(f)}</span>`:esc(f)).join(' ')}</div>
+        <div class="preview">${frags.map((f,i)=>cut.includes(i)?полосы(f):esc(f)).join(' ')}</div>
         <div class="kv" style="margin-top:14px">
           <div class="k">Изъято</div><div>${cut.length} из ${frags.length}</div>
           <div class="k">Основание</div><div>${esc(x.basis)}</div>
