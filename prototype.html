@@ -737,6 +737,7 @@ const S = {
   профФильтр:'all', черновикБеседы:null, черновикСнятия:null, черновикРапорта:null,
   facility:'ик',             // тип учреждения: ик | сизо
   признаки:null, имяГруппы:'', режимГруппы:'signal', поискГруппы:'',
+  сортировкаЛюдей:'default', фильтрЛюдей:'all',
   queue: [],
   log: [],
   openId: null,
@@ -2091,11 +2092,16 @@ function renderPeople(){
   const отряд = S.personUnit || 'all';
   const все = ROL.persons;
   const подборка = S.personSet ? ПОДБОРКИ.find(x => x.id === S.personSet) : null;
+  const фильтр = ФИЛЬТРЫ_ЛЮДЕЙ[S.фильтрЛюдей] || ФИЛЬТРЫ_ЛЮДЕЙ.all;
+  const сорт = СОРТИРОВКИ[S.сортировкаЛюдей] || СОРТИРОВКИ.default;
   const список = все.filter(p =>
-    (отряд === 'all' || p.unit === отряд) &&
+    (отряд === 'all' || местоЧеловека(p) === отряд) &&
     (!подборка || подборка.фильтр(p)) &&
-    (!q || (p.name + ' ' + p.dob + ' ' + p.unit).toLowerCase().includes(q)));
+    фильтр[1](p) &&
+    (!q || (p.name + ' ' + p.dob + ' ' + местоЧеловека(p) + ' ' + p.article).toLowerCase().includes(q)))
+    .slice().sort(сорт[1]);
   const показ = список.slice(0, S.shown);
+  const сОпасными = все.filter(p => опасныеСвязи(p).есть).length;
 
   document.getElementById('content').innerHTML = `
     <div class="page-head"><h1>Люди и связи</h1>
@@ -2104,13 +2110,34 @@ function renderPeople(){
     <div class="bar">
       <input id="pq" class="search" placeholder="Поиск по фамилии или дате рождения" value="${esc(S.personQuery||'')}"
              oninput="вводПоиска('pq', v => { S.personQuery = v; S.shown = 30; renderPeople(); })">
-      <div class="seg">
-        ${['all', ...ROL.units].map(u =>
-          `<button class="${отряд===u?'on':''}" onclick="S.personUnit='${u}'; S.shown=30; render()">${u==='all'?'Все':u}</button>`).join('')}
-      </div>
       <span class="chip">${список.length} из ${все.length}</span>
       ${подборка ? `<span class="chip a">подборка: ${esc(подборка.name)} <button class="link" onclick="S.personSet=null; render()">сбросить</button></span>` : ''}
     </div>
+
+    <div class="bar">
+      <span class="lab">Показать:</span>
+      <div class="seg">
+        ${Object.keys(ФИЛЬТРЫ_ЛЮДЕЙ).map(k =>
+          `<button class="${S.фильтрЛюдей===k?'on':''}" onclick="S.фильтрЛюдей='${k}'; S.shown=30; render()">${esc(ФИЛЬТРЫ_ЛЮДЕЙ[k][0])}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="bar">
+      <span class="lab">Порядок:</span>
+      <div class="seg">
+        ${Object.keys(СОРТИРОВКИ).map(k =>
+          `<button class="${S.сортировкаЛюдей===k?'on':''}" onclick="S.сортировкаЛюдей='${k}'; S.shown=30; render()">${esc(СОРТИРОВКИ[k][0])}</button>`).join('')}
+      </div>
+      <span class="lab" style="margin-left:12px">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}:</span>
+      <div class="seg">
+        ${['all', ...[...new Set(ROL.persons.map(местоЧеловека))].sort().slice(0, 10)].map(u =>
+          `<button class="${отряд===u?'on':''}" onclick="S.personUnit='${u}'; S.shown=30; render()">${u==='all'?'Все':esc(u)}</button>`).join('')}
+      </div>
+    </div>
+
+    ${сОпасными ? `<div class="note warn">Признак опасных связей — у ${сОпасными}
+      ${plural(сОпасными,'человека','человек','человек')}. В порядке по умолчанию они идут первыми:
+      общий контакт с другими людьми${S.facility === 'сизо' ? ', а в изоляторе — и с соучастниками по делу' : ''}.</div>` : ''}
 
     ${показ.length ? `<div class="rows">${показ.map(человекHTML).join('')}</div>
       ${список.length > показ.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${список.length - показ.length}</button></div>` : ''}`
@@ -2120,16 +2147,21 @@ function renderPeople(){
 
 function человекHTML(p){
   const неподтв = p.contacts.filter(c => !c.verified).length;
+  const о = опасныеСвязи(p);
   return `<div class="row">
-    <div class="stripe ${RISK_LETTER[p.risk]}"></div>
+    <div class="stripe ${о.есть ? 'r' : RISK_LETTER[p.risk]}"></div>
     <div>
       <div class="who">${esc(p.name)}</div>
       <div class="meta">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(местоЧеловека(p))}</div>
       <div class="marks">
         <span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span>
         <span class="chip">контактов: ${p.contacts.length}</span>
+        ${(() => { const о = опасныеСвязи(p); return о.есть
+          ? `<span class="chip r" title="Общий контакт с другими людьми${о.соучастники ? ', в том числе с соучастником по делу' : ''}">опасные связи${о.общие ? ' · ' + о.общие : ''}</span>`
+          : ''; })()}
+        ${(() => { const кр = сигналыЧеловека(p.id).красные.length;
+          return кр ? `<span class="chip r" title="Красные сигналы за три месяца">красных сигналов: ${кр}</span>` : ''; })()}
         ${меткаРазрешения(p.id)}
-        ${меткаСоучастника(p.id)}
         ${неподтв ? `<span class="chip o">не подтверждено: ${неподтв}</span>` : ''}
       </div>
     </div>
@@ -2168,6 +2200,12 @@ function открытьДосье(id){
             ${м.записка ? `<div class="s" style="margin-top:4px">Цензор: «${esc(м.записка)}»</div>` : ''}
             <div class="s" style="margin-top:4px">${esc(м.by)}, ${esc(м.at)}${м.дело ? ' · дело ' + esc(м.дело) : ''}</div>
           </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${м.id}')">Открыть</button></div>`).join('')}</div>` : ''; })()}
+
+      ${блокОпасныхСвязей(p)}
+
+      ${блокСигналов(p.id)}
+
+      ${блокУчётаВДосье(p.id)}
 
       ${блокСоучастников(p.id)}
 
@@ -5574,6 +5612,148 @@ function создатьГруппуПоПризнаку(){
   ОПЕР.составы[id] = найдены.map(p => p.id);
   closeModal(); go('groups');
   toast('Группа создана: ' + имя + ' · ' + найдены.length + ' ' + plural(найдены.length, 'человек', 'человека', 'человек'));
+}
+
+/* ====================================================================
+   ЛЮДИ И СВЯЗИ: сортировка, фильтры, признак опасных связей
+
+   Список из 2400 человек без порядка бесполезен. По умолчанию наверх
+   поднимаются те, у кого есть признак опасных связей: общий контакт
+   с другими людьми, а в изоляторе — ещё и с соучастниками по делу.
+   Именно с них начинают, а не с буквы «А».
+   ==================================================================== */
+
+/* Есть ли у человека признак опасных связей и какой именно. */
+function опасныеСвязи(p){
+  const общие = связиЧеловека(p);
+  const соуч = S.facility === 'сизо' ? связьЧерезПосредника(p.id) : [];
+  const неподтв = p.contacts.filter(c => !c.verified && !c.protected).length;
+  return {
+    общие: общие.length,
+    соучастники: соуч.length,
+    неподтверждённые: неподтв,
+    есть: общие.length > 0 || соуч.length > 0,
+    вес: соуч.length * 100 + общие.length * 10 + неподтв,
+  };
+}
+
+const СОРТИРОВКИ = {
+  default: ['Сначала опасные связи', (a, b) => опасныеСвязи(b).вес - опасныеСвязи(a).вес
+    || РИСК_ВЕС[b.risk] - РИСК_ВЕС[a.risk] || a.name.localeCompare(b.name, 'ru')],
+  alpha:   ['По алфавиту', (a, b) => a.name.localeCompare(b.name, 'ru')],
+  risk:    ['По уровню внимания', (a, b) => РИСК_ВЕС[b.risk] - РИСК_ВЕС[a.risk]
+    || a.name.localeCompare(b.name, 'ru')],
+  place:   ['По месту', (a, b) => String(местоЧеловека(a)).localeCompare(String(местоЧеловека(b)), 'ru')
+    || a.name.localeCompare(b.name, 'ru')],
+};
+const РИСК_ВЕС = { red: 3, orange: 2, green: 1 };
+
+const ФИЛЬТРЫ_ЛЮДЕЙ = {
+  all:      ['Все', () => true],
+  links:    ['С опасными связями', p => опасныеСвязи(p).есть],
+  red:      ['Повышенное внимание', p => p.risk === 'red'],
+  unverif:  ['Неподтверждённые контакты', p => p.contacts.some(c => !c.verified && !c.protected)],
+  prevent:  ['На профучёте', p => ПРОФУЧЁТ.some(z => !z.removed && z.pid === p.id)],
+  nolink:   ['Без перечня контактов', p => !p.contacts.length],
+};
+
+/* ---------- история сигналов человека за три месяца ---------- */
+
+function сигналыЧеловека(pid){
+  const записи = архивЧеловека(pid);
+  const красные = записи.filter(z => z[7] === 2);
+  const оранжевые = записи.filter(z => z[7] === 1);
+  const недопуски = записи.filter(z => z[8] === 2);
+  const вымарано = записи.filter(z => z[8] === 1);
+  const поКаналам = { письмо: 0, голос: 0, видео: 0 };
+  красные.concat(оранжевые).forEach(z => { поКаналам[H_КАНАЛ[z[5]]]++; });
+  return { всего: записи.length, красные, оранжевые, недопуски, вымарано, поКаналам };
+}
+
+/* Блок истории сигналов для досье: не цифра, а перечень с датами. */
+function блокСигналов(pid){
+  const с = сигналыЧеловека(pid);
+  if (!с.всего) return `<h3 style="margin:22px 0 10px; font-size:16px">Сигналы за три месяца</h3>
+    <div class="top-sub">Переписки этого человека в архиве нет.</div>`;
+
+  const строка = z => `
+    <tr>
+      <td class="tnum">${hДата(z[1])}</td>
+      <td>${H_НАПРАВЛЕНИЕ[z[4]]}</td>
+      <td>${H_КАНАЛ[z[5]]}</td>
+      <td class="tnum">${z[9]} зн.</td>
+      <td>${H_РЕШЕНИЕ[z[8]]}</td>
+    </tr>`;
+
+  const красные = с.красные.slice().sort((a, b) => a[1] - b[1]).slice(0, 10);
+
+  return `
+    <h3 style="margin:22px 0 10px; font-size:16px">Сигналы за три месяца</h3>
+    <div class="stats" style="margin-bottom:14px">
+      <div class="stat"><div class="k">Всего отправлений</div><div class="v tnum">${с.всего}</div>
+        <div class="d">за 90 дней</div></div>
+      <div class="stat"><div class="k">Красных сигналов</div><div class="v tnum">${с.красные.length}</div>
+        <div class="d">${с.всего ? Math.round(с.красные.length / с.всего * 100) : 0}% переписки</div></div>
+      <div class="stat"><div class="k">Оранжевых</div><div class="v tnum">${с.оранжевые.length}</div>
+        <div class="d">требовали разбора</div></div>
+      <div class="stat"><div class="k">Не допущено</div><div class="v tnum">${с.недопуски.length}</div>
+        <div class="d">вымарано ещё ${с.вымарано.length}</div></div>
+    </div>
+
+    ${с.красные.length ? `
+      <div class="note warn" style="margin-top:0"><b>Красные сигналы: ${с.красные.length}.</b>
+        В письмах ${с.поКаналам.письмо}, в голосовых ${с.поКаналам.голос}, в видео ${с.поКаналам.видео}
+        — считая и оранжевые.</div>
+      <div class="журнал" style="margin-top:12px">
+        <table class="журнал-таб" style="min-width:0">
+          <thead><tr><th>Дата</th><th>Направление</th><th>Канал</th><th>Объём</th><th>Чем кончилось</th></tr></thead>
+          <tbody>${красные.map(строка).join('')}</tbody>
+        </table>
+      </div>
+      ${с.красные.length > 10 ? `<div class="top-sub" style="margin-top:8px">показаны последние 10 из ${с.красные.length}</div>` : ''}`
+      : '<div class="note ok" style="margin-top:0">Красных сигналов за три месяца не было.</div>'}`;
+}
+
+/* ---------- профучёт и дела в досье ---------- */
+
+function блокУчётаВДосье(pid){
+  const з = ПРОФУЧЁТ.filter(z => !z.removed && z.pid === pid);
+  const дела = ДЕЛА.filter(d => d.pid === pid);
+  if (!з.length && !дела.length) return '';
+
+  return `
+    ${з.length ? `
+      <h3 style="margin:22px 0 10px; font-size:16px">Профилактический учёт</h3>
+      ${з.map(z => `
+        <div class="note ${z.острота === 'red' ? 'warn' : ''}" style="margin-top:0">
+          <b>${esc(z.catName)}</b><br>
+          На учёте с ${esc(z.since)} · закреплён ${esc(z.owner)} ·
+          последняя беседа ${esc(z.lastTalk)} ·
+          ${z.reviewIn < 0 ? '<b>пересмотр просрочен на ' + (-z.reviewIn) + ' дн.</b>' : 'пересмотр ' + esc(z.reviewDate)}<br>
+          <span class="top-sub">Основание: ${esc(z.basis)}</span>
+        </div>`).join('')}` : ''}
+
+    ${дела.length ? `
+      <h3 style="margin:22px 0 10px; font-size:16px">Оперативные дела · ${дела.length}</h3>
+      <div class="clist">${дела.map(d => `
+        <div class="citem"><div>
+          <div class="w">${esc(d.no)} — ${esc(d.title)}</div>
+          <div class="s">открыто ${esc(d.opened)} · ${esc(d.status)} · приобщено документов: ${d.attached}</div>
+          <div class="s">${esc(d.reason)}</div>
+        </div></div>`).join('')}</div>` : ''}`;
+}
+
+/* ---------- сводка связей одной строкой ---------- */
+
+function блокОпасныхСвязей(p){
+  const о = опасныеСвязи(p);
+  if (!о.есть && !о.неподтверждённые) return '';
+  const части = [];
+  if (о.соучастники) части.push('общий адресат с соучастником — ' + о.соучастники);
+  if (о.общие) части.push('общий контакт с другими людьми — ' + о.общие);
+  if (о.неподтверждённые) части.push('не подтверждено контактов — ' + о.неподтверждённые);
+  return `<div class="note ${о.есть ? 'warn' : ''}" style="margin-top:14px">
+    <b>Признаки для проверки:</b> ${esc(части.join('; '))}.</div>`;
 }
 
 /* ---------------- маршрутизация ---------------- */
