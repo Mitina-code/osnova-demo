@@ -729,6 +729,7 @@ const S = {
   черновикГруппы:null, черновикКонтакта:null, черновикДелегата:null,
   профФильтр:'all', черновикБеседы:null, черновикСнятия:null, черновикРапорта:null,
   facility:'ик',             // тип учреждения: ик | сизо
+  признаки:null, имяГруппы:'', режимГруппы:'signal',
   queue: [],
   log: [],
   openId: null,
@@ -2137,7 +2138,7 @@ function открытьДосье(id){
         <div class="k">Активность</div><div>${esc(активностьЧеловека(p))}</div>
         <div class="k">Статья</div><div>${esc(p.article)}</div>
         <div class="k">В учреждении с</div><div>${esc(p.since)}</div>
-        <div class="k">Продукты ЗТ</div><div>${p.zt ? 'пользуется' : 'не пользуется — перечня контактов нет'}</div>
+
       </div>
 
       ${(() => { const мат = вДосье(p.id); return мат.length ? `
@@ -2155,6 +2156,8 @@ function открытьДосье(id){
       ${блокСоучастников(p.id)}
 
       <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
+      ${p.contacts.length ? '' : `<div class="note warn" style="margin-top:0">Перечень контактов не заведён.
+        Связь возможна только бумажной перепиской — звонков и сообщений у этого человека нет.</div>`}
       <div class="clist">
         ${p.contacts.map((c, i) => контактHTML(p.id, i, c)).join('')}
       </div>
@@ -2244,7 +2247,8 @@ function renderGroups(){
       <div><h1>Группы и наблюдение</h1>
         <p>Автоматические группы система собирает сама. Свои создаёт оперативник под конкретную задачу.</p></div>
       <div class="head-acts">
-        <button class="btn primary" onclick="открытьСозданиеГруппы()">Создать свою группу</button>
+        <button class="btn" onclick="открытьСозданиеГруппы()">Собрать вручную</button>
+        <button class="btn primary" onclick="открытьГруппуПоПризнаку()">Создать по признаку</button>
       </div>
     </div>
 
@@ -2252,10 +2256,12 @@ function renderGroups(){
       и состав меняются по требованиям ФСИН — ОСНОВА хранит версию настроек, чтобы было видно,
       по какой методике собрана подборка.</div>
 
-    <h2 class="sect">Автоматические · ${авто.length}</h2>
+    <h2 class="sect">Мои группы · ${ручные.length}</h2>
+    ${ручные.length ? ручные.map(блок).join('') : `
+      <div class="empty"><div class="big">${ICON.groups}</div><b>Своих групп пока нет</b>
+        <div>Соберите группу по признаку — состав подберётся сам.</div></div>`}
+    <h2 class="sect">Системные подборки · ${авто.length}</h2>
     ${авто.map(блок).join('')}
-    <h2 class="sect">Ручные · ${ручные.length}</h2>
-    ${ручные.map(блок).join('')}
     <div class="note">Группа не вводит ограничений сама по себе. Она меняет приоритет сигналов
       и то, что система показывает сотруднику.</div>
   `;
@@ -5360,6 +5366,155 @@ function меткаРазрешения(pid){
   return с.permit
     ? '<span class="chip g" title="Разрешение ' + esc(с.permit.no) + '">разговоры разрешены</span>'
     : '<span class="chip o" title="Телефонные разговоры возможны только с разрешения следствия или суда">без разрешения</span>';
+}
+
+/* ====================================================================
+   ГРУППА ПО ПРИЗНАКУ
+
+   Собирать группу, отмечая людей по одному, годится для двух-трёх человек.
+   В работе признак обычно другой: «все из этой камеры», «все по этой
+   статье», «все, у кого контакты не подтверждены», «все соучастники».
+   Поэтому группа собирается фильтром, а состав показывается сразу —
+   до создания видно, сколько человек попадёт и кто именно.
+   ==================================================================== */
+
+const ПРИЗНАКИ_ПО_УМОЛЧАНИЮ = {
+  risk: '', place: '', article: '', lang: '',
+  unverified: false, mass: false, prevention: '',
+  codef: false, nopermit: false,
+};
+
+function подходит(p, ф){
+  if (ф.risk && p.risk !== ф.risk) return false;
+  if (ф.place && местоЧеловека(p) !== ф.place) return false;
+  if (ф.article && p.article !== ф.article) return false;
+  if (ф.lang && p.lang !== ф.lang) return false;
+  if (ф.unverified && !p.contacts.some(c => !c.verified && !c.protected)) return false;
+  if (ф.mass && !p.contacts.some(c => (ОПЕР.индексТелефонов[c.phone] || []).length > 1)) return false;
+  if (ф.prevention && !ПРОФУЧЁТ.some(z => !z.removed && z.pid === p.id && z.cat === ф.prevention)) return false;
+  if (ф.codef && !соучастники(p.id).length) return false;
+  if (ф.nopermit) { const с = сизоДанные(p.id); if (!с || с.permit) return false; }
+  return true;
+}
+
+function отобранные(){
+  const ф = S.признаки || ПРИЗНАКИ_ПО_УМОЛЧАНИЮ;
+  const пусто = !ф.risk && !ф.place && !ф.article && !ф.lang && !ф.unverified
+    && !ф.mass && !ф.prevention && !ф.codef && !ф.nopermit;
+  if (пусто) return [];
+  return ROL.persons.filter(p => подходит(p, ф));
+}
+
+/* Словесное описание набора признаков — оно же станет критерием группы. */
+function описаниеПризнаков(){
+  const ф = S.признаки || {};
+  const части = [];
+  if (ф.risk) части.push('уровень внимания: ' + RISK_ONE[ф.risk]);
+  if (ф.place) части.push((S.facility === 'сизо' ? 'камера: ' : 'отряд: ') + ф.place);
+  if (ф.article) части.push('статья ' + ф.article);
+  if (ф.lang) части.push('язык переписки: ' + (LANG_LABEL[ф.lang] || ф.lang));
+  if (ф.unverified) части.push('есть неподтверждённые контакты');
+  if (ф.mass) части.push('общий контакт с другими людьми');
+  if (ф.prevention) части.push('на профучёте: ' + (КАТЕГОРИИ.find(k => k.id === ф.prevention) || {}).name);
+  if (ф.codef) части.push('проходит по делу с соучастниками');
+  if (ф.nopermit) части.push('без разрешения на телефонные разговоры');
+  return части.join('; ') || 'признаки не заданы';
+}
+
+function открытьГруппуПоПризнаку(){
+  S.признаки = { ...ПРИЗНАКИ_ПО_УМОЛЧАНИЮ };
+  S.имяГруппы = '';
+  S.режимГруппы = 'signal';
+  показатьГруппуПоПризнаку();
+}
+
+function показатьГруппуПоПризнаку(){
+  const ф = S.признаки;
+  const найдены = отобранные();
+  const места = [...new Set(ROL.persons.map(местоЧеловека))].sort();
+  const статьи = [...new Set(ROL.persons.map(p => p.article))].sort();
+
+  const выбор = (поле, подпись, значения) => `
+    <label class="fld">${подпись}
+      <select onchange="S.признаки.${поле}=this.value; показатьГруппуПоПризнаку()">
+        <option value="">не важно</option>
+        ${значения.map(([v, t]) => `<option value="${esc(v)}" ${ф[поле] === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+      </select></label>`;
+
+  const галочка = (поле, подпись, пояснение) => `
+    <label class="переключ">
+      <input type="checkbox" ${ф[поле] ? 'checked' : ''}
+             onchange="S.признаки.${поле}=this.checked; показатьГруппуПоПризнаку()">
+      <span>${подпись}${пояснение ? ` <span class="top-sub">— ${пояснение}</span>` : ''}</span>
+    </label>`;
+
+  modal(`
+    <div class="mh"><div><h3>Группа по признаку</h3>
+      <div class="top-sub">Состав соберётся сам. Признаки можно сочетать.</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="два">
+        ${выбор('risk', 'Уровень внимания', [['red', 'красный'], ['orange', 'оранжевый'], ['green', 'обычный']])}
+        ${выбор('place', S.facility === 'сизо' ? 'Камера' : 'Отряд', места.map(x => [x, x]))}
+      </div>
+      <div class="два">
+        ${выбор('article', 'Статья', статьи.slice(0, 40).map(x => [x, 'ст. ' + x]))}
+        ${выбор('lang', 'Язык переписки', [['ru', 'русский'], ['uz', 'узбекский'], ['tg', 'таджикский']])}
+      </div>
+      ${выбор('prevention', 'Категория профилактического учёта', КАТЕГОРИИ.map(k => [k.id, k.name]))}
+
+      <h3 style="margin:18px 0 8px">Дополнительно</h3>
+      ${галочка('unverified', 'Есть неподтверждённые контакты', 'родство не проверено')}
+      ${галочка('mass', 'Общий контакт с другими людьми', 'один номер у нескольких')}
+      ${S.facility === 'сизо' ? галочка('codef', 'Проходит по делу с соучастниками', 'содержатся раздельно') : ''}
+      ${S.facility === 'сизо' ? галочка('nopermit', 'Без разрешения на телефонные разговоры', '') : ''}
+
+      <div class="actionbar" style="margin-top:18px; ${найдены.length ? 'border-color:var(--primary); background:var(--lilac)' : ''}">
+        <div class="txt"><b>${найдены.length ? 'Попадёт в группу: ' + найдены.length : 'Признаки не заданы'}</b>
+          ${найдены.length ? '<br>' + esc(описаниеПризнаков()) : ' — отметьте хотя бы один'}</div>
+      </div>
+
+      ${найдены.length ? `
+        <div class="marks" style="margin-top:10px">
+          ${найдены.slice(0, 12).map(p => `<span class="chip ${RISK_LETTER[p.risk]}">${esc(p.name)}</span>`).join('')}
+          ${найдены.length > 12 ? `<span class="chip">…и ещё ${найдены.length - 12}</span>` : ''}
+        </div>` : ''}
+
+      <label class="fld" style="margin-top:18px">Название группы
+        <input id="grName2" value="${esc(S.имяГруппы)}" placeholder="${esc(описаниеПризнаков().slice(0, 60))}"
+               oninput="S.имяГруппы=this.value"></label>
+
+      <h3 style="margin:14px 0 8px">Режим</h3>
+      ${Object.keys(РЕЖИМЫ_ГРУППЫ).map(k => `
+        <label class="opt ${S.режимГруппы === k ? 'on' : ''}" onclick="S.режимГруппы='${k}'; показатьГруппуПоПризнаку()">
+          <b>${esc(РЕЖИМЫ_ГРУППЫ[k][0])}</b><span>${esc(РЕЖИМЫ_ГРУППЫ[k][1])}</span></label>`).join('')}
+      ${S.режимГруппы === 'listen' ? `<div class="note warn">Прослушивание переговоров включается
+        по отдельному основанию. Каждое подключение фиксируется в журнале.</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="создатьГруппуПоПризнаку()" ${найдены.length ? '' : 'disabled'}>
+        Создать группу${найдены.length ? ' · ' + найдены.length : ''}</button>
+    </div>`);
+}
+
+function создатьГруппуПоПризнаку(){
+  const найдены = отобранные();
+  if (!найдены.length) return;
+  const id = 'f' + Date.now().toString().slice(-6);
+  const имя = (S.имяГруппы || '').trim() || описаниеПризнаков().slice(0, 60);
+  LIVE.groups.push({
+    id, name: имя, type: 'manual',
+    count: найдены.length,
+    color: S.признаки.risk === 'red' ? 'red' : 'orange',
+    criterion: 'по признаку: ' + описаниеПризнаков(),
+    policy: РЕЖИМЫ_ГРУППЫ[S.режимГруппы][1],
+    mode: S.режимГруппы,
+    byFilter: true,
+  });
+  ОПЕР.составы[id] = найдены.map(p => p.id);
+  closeModal(); go('groups');
+  toast('Группа создана: ' + имя + ' · ' + найдены.length + ' ' + plural(найдены.length, 'человек', 'человека', 'человек'));
 }
 
 /* ---------------- маршрутизация ---------------- */
