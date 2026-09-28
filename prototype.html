@@ -1006,6 +1006,21 @@ function смотретьВыборку(){
   openCard(S.conveyor[0]);
 }
 
+/* Поля поиска перерисовывают экран на каждом нажатии. Поле при этом
+   создаётся заново, а focus() ставит каретку в начало строки — и текст
+   набирается задом наперёд: «Иванов» превращается в «вонави».
+   Поэтому запоминаем положение каретки и возвращаем его после перерисовки. */
+function вводПоиска(id, применить){
+  const поле = document.getElementById(id);
+  if (!поле) return;
+  const позиция = поле.selectionStart;
+  применить(поле.value);
+  const новое = document.getElementById(id);
+  if (!новое) return;
+  новое.focus();
+  try { новое.setSelectionRange(позиция, позиция); } catch (e) { /* не текстовое поле */ }
+}
+
 function showMore(){S.shown += 50; render()}
 function plural(n,a,b,c){
   const m10=n%10, m100=n%100;
@@ -1387,7 +1402,7 @@ function renderArchive(){
       <p>Любое решение хранится и может быть пересмотрено. Пересмотр не стирает прежнюю запись — он создаёт новую.</p></div>
     <div class="bar">
       <input id="archQ" class="search" placeholder="Поиск по отправителю, получателю или номеру"
-             value="${esc(S.archiveQuery || '')}" oninput="S.archiveQuery=this.value; S.shown=30; renderArchive(); document.getElementById('archQ').focus()">
+             value="${esc(S.archiveQuery || '')}" oninput="вводПоиска('archQ', v => { S.archiveQuery = v; S.shown = 30; renderArchive(); })">
       <span class="chip">${list.length} из ${all.length}</span>
     </div>
     ${all.length ? `
@@ -2025,7 +2040,7 @@ function renderPeople(){
 
     <div class="bar">
       <input id="pq" class="search" placeholder="Поиск по фамилии или дате рождения" value="${esc(S.personQuery||'')}"
-             oninput="S.personQuery=this.value; S.shown=30; renderPeople(); document.getElementById('pq').focus()">
+             oninput="вводПоиска('pq', v => { S.personQuery = v; S.shown = 30; renderPeople(); })">
       <div class="seg">
         ${['all', ...ROL.units].map(u =>
           `<button class="${отряд===u?'on':''}" onclick="S.personUnit='${u}'; S.shown=30; render()">${u==='all'?'Все':u}</button>`).join('')}
@@ -2479,7 +2494,7 @@ function renderStaff(){
 
     <div class="bar">
       <input id="sq" class="search" placeholder="Поиск по фамилии, должности или отряду" value="${esc(S.staffQuery||'')}"
-             oninput="S.staffQuery=this.value; renderStaff(); document.getElementById('sq').focus()">
+             oninput="вводПоиска('sq', v => { S.staffQuery = v; renderStaff(); })">
       <span class="chip">${список.length} из ${все.length}</span>
     </div>
 
@@ -3080,7 +3095,7 @@ function renderRegister(){
 
     <div class="bar">
       <input id="rq" class="search" placeholder="Поиск по фамилии, номеру или виду" value="${esc(S.regQuery || '')}"
-             oninput="S.regQuery=this.value; renderRegister(); document.getElementById('rq').focus()">
+             oninput="вводПоиска('rq', v => { S.regQuery = v; renderRegister(); })">
       <div class="seg">
         ${['all', ...ИСТОЧНИКИ.slice(0, 4)].map(x =>
           `<button class="${ист === x ? 'on' : ''}" onclick="S.regSource='${x}'; render()">${x === 'all' ? 'Все' : x}</button>`).join('')}
