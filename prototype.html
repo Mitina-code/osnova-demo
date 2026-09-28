@@ -2140,6 +2140,18 @@ function открытьДосье(id){
         <div class="k">Продукты ЗТ</div><div>${p.zt ? 'пользуется' : 'не пользуется — перечня контактов нет'}</div>
       </div>
 
+      ${(() => { const мат = вДосье(p.id); return мат.length ? `
+        <h3 style="margin:22px 0 10px; font-size:16px">Приобщено к досье · ${мат.length}</h3>
+        <div class="note" style="margin-top:0">Материалы, которые оперативный сотрудник оставил
+          в досье при разборе переданного цензором.</div>
+        <div class="clist" style="margin-top:12px">${мат.map(м => `
+          <div class="citem"><div>
+            <div class="w">${esc(м.id)} · ${esc(м.решение)}</div>
+            <div class="s">${esc(м.резюме)}</div>
+            ${м.записка ? `<div class="s" style="margin-top:4px">Цензор: «${esc(м.записка)}»</div>` : ''}
+            <div class="s" style="margin-top:4px">${esc(м.by)}, ${esc(м.at)}${м.дело ? ' · дело ' + esc(м.дело) : ''}</div>
+          </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${м.id}')">Открыть</button></div>`).join('')}</div>` : ''; })()}
+
       ${блокСоучастников(p.id)}
 
       <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
@@ -3913,6 +3925,14 @@ function печатьАктаОчереди(id){
 
 const ДЕЛА = (ROL.cases || []).map(d => ({ ...d }));
 
+/* Приобщение к досье — не то же, что приобщение к делу.
+   Оперативное дело заведено не на каждого, а досье есть у любого
+   человека в контуре. Приобщённый материал остаётся в досье и всплывает,
+   когда этого человека откроют в следующий раз — даже если дела нет
+   и заводить его пока не за что. */
+const ДОСЬЕ_МАТЕРИАЛЫ = {};
+function вДосье(pid){ return ДОСЬЕ_МАТЕРИАЛЫ[pid] || []; }
+
 function переданные(){ return S.queue.filter(x => x.status === 'handed'); }
 function решённыеОперативником(){ return S.queue.filter(x => x.opDecision); }
 
@@ -4053,7 +4073,8 @@ function renderHanded(){
       <div><div class="who">${esc(x.from)} → ${esc(x.to)}</div>
         <div class="meta">${esc(x.id)} · решено ${esc(x.opAt || '')}</div></div>
       <div><div class="sum">${x.opDecision === 'allow' ? 'Допущено' : 'Не допущено'}</div>
-        ${x.opCase ? `<div class="why">Приобщено к делу ${esc(x.opCase)}</div>` : '<div class="why">К делу не приобщалось</div>'}</div>
+        <div class="why">${[x.toDossier ? 'приобщено к досье' : '', x.opCase ? 'приобщено к делу ' + esc(x.opCase) : '']
+          .filter(Boolean).join(' · ') || 'не приобщалось'}</div></div>
       <div class="acts"></div>
     </div>`;
 
@@ -4111,6 +4132,15 @@ function разобратьПереданное(id){
       ${тело}
       ${x.tr ? `<h3 style="margin:18px 0 10px">Перевод</h3><div class="body-text">${esc(x.tr)}</div>` : ''}
 
+      <h3 style="margin:18px 0 10px">Приобщить к досье</h3>
+      <label class="переключ">
+        <input type="checkbox" id="toDossier" ${S.вДосье ? 'checked' : ''}
+               onchange="S.вДосье = this.checked">
+        <span>Оставить материал в досье: <b>${esc((POP.поId[x.pid] || {}).name || x.to)}</b></span>
+      </label>
+      <div class="top-sub" style="margin:6px 0 0">Досье есть у каждого, дело — не у каждого.
+        Приобщённое к досье всплывёт, когда вы откроете этого человека в следующий раз.</div>
+
       <h3 style="margin:18px 0 10px">Приобщить к делу</h3>
       <p style="color:var(--muted); margin:0 0 10px; font-size:14.5px">
         Приобщение не заменяет решения по письму. Письмо можно и пропустить,
@@ -4134,6 +4164,7 @@ function разобратьПереданное(id){
       <button class="btn primary" onclick="решениеОперативника('${x.id}','allow')">Допустить</button>
     </div>`);
   S.выбранноеДело = '';
+  S.вДосье = false;
 }
 
 function выбратьДело(no){
@@ -4151,6 +4182,19 @@ function решениеОперативника(id, что){
   x.opDecision = что;
   x.opCase = дело || null;
   x.opAt = nowStamp();
+
+  if (S.вДосье) {
+    (ДОСЬЕ_МАТЕРИАЛЫ[x.pid] = ДОСЬЕ_МАТЕРИАЛЫ[x.pid] || []).unshift({
+      id: x.id,
+      at: nowStamp(),
+      by: профиль().name,
+      решение: что === 'allow' ? 'допущено' : 'не допущено',
+      резюме: x.sum,
+      записка: x.handNote || '',
+      дело: дело || null,
+    });
+    x.toDossier = true;
+  }
   x.status = что === 'allow' ? 'allowed' : 'denied';
   if (дело) { const d = ДЕЛА.find(z => z.no === дело); if (d) d.attached++; }
 
@@ -4166,9 +4210,10 @@ function решениеОперативника(id, что){
 
   S.выбранноеДело = '';
   closeModal(); render();
-  toast(что === 'allow'
-    ? 'Допущено' + (дело ? '. Копия приобщена к делу ' + дело : '')
-    : 'Не допущено. Акт уйдёт на подпись' + (дело ? '; копия приобщена к делу ' + дело : ''));
+  const куда = [S.вДосье ? 'досье' : '', дело ? 'дело ' + дело : ''].filter(Boolean).join(' и ');
+  S.вДосье = false;
+  toast((что === 'allow' ? 'Допущено' : 'Не допущено, акт уйдёт на подпись')
+    + (куда ? '. Копия приобщена в ' + куда : ''));
 }
 
 /* ====================================================================
