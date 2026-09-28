@@ -736,7 +736,7 @@ const S = {
   черновикГруппы:null, черновикКонтакта:null, черновикДелегата:null,
   профФильтр:'all', черновикБеседы:null, черновикСнятия:null, черновикРапорта:null,
   facility:'ик',             // тип учреждения: ик | сизо
-  признаки:null, имяГруппы:'', режимГруппы:'signal',
+  признаки:null, имяГруппы:'', режимГруппы:'signal', поискГруппы:'',
   queue: [],
   log: [],
   openId: null,
@@ -4603,11 +4603,29 @@ const РЕЖИМЫ_ГРУППЫ = {
 
 function открытьСозданиеГруппы(предвыбран){
   S.черновикГруппы = { name: 'Новая группа наблюдения', mode: 'signal', люди: предвыбран ? [предвыбран] : [] };
+  S.поискГруппы = '';
   показатьСозданиеГруппы();
+}
+
+/* Поиск человека для группы: по фамилии и имени, отряду или камере,
+   статье и дате рождения. Людей в учреждении тысячи, поэтому без поиска
+   ручная сборка не работает вовсе. */
+function найтиДляГруппы(){
+  const q = (S.поискГруппы || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  return ROL.persons.filter(p =>
+    p.name.toLowerCase().includes(q)
+    || String(местоЧеловека(p)).toLowerCase().includes(q)
+    || String(p.article).toLowerCase().includes(q)
+    || String(p.dob).includes(q)
+  );
 }
 
 function показатьСозданиеГруппы(){
   const ч = S.черновикГруппы;
+  const найдены = найтиДляГруппы();
+  const q = (S.поискГруппы || '').trim();
+
   modal(`
     <div class="mh"><div><h3>Своя группа наблюдения</h3>
       <div class="top-sub">Личная подборка оперативного сотрудника</div></div>
@@ -4615,6 +4633,23 @@ function показатьСозданиеГруппы(){
     <div class="mb">
       <label class="fld">Название
         <input id="grName" value="${esc(ч.name)}" oninput="S.черновикГруппы.name=this.value"></label>
+
+      <h3 style="margin:18px 0 10px">Кого добавить</h3>
+      <input id="grSearch" class="search" style="max-width:none; width:100%"
+        placeholder="Фамилия, ${S.facility === 'сизо' ? 'камера' : 'отряд'}, статья или дата рождения"
+        value="${esc(S.поискГруппы || '')}"
+        oninput="вводПоиска('grSearch', v => { S.поискГруппы = v; показатьСозданиеГруппы(); })">
+
+      ${q.length >= 2 ? `
+        <div class="top-sub" style="margin:8px 0">Найдено: ${найдены.length}${найдены.length > 15 ? ' — показаны первые 15' : ''}</div>
+        ${найдены.length ? `<div class="находки">${найдены.slice(0, 15).map(p => {
+          const уже = ч.люди.includes(p.id);
+          return `<button class="находка" onclick="${уже ? `убратьИзЧерновика('${p.id}')` : `добавитьВЧерновик('${p.id}')`}">
+            <b>${уже ? '✓ ' : ''}${esc(p.name)}</b>
+            <span>${esc(местоЧеловека(p))} · ст. ${esc(p.article)} · ${esc(p.dob)} · ${esc(p.riskText)}</span></button>`;
+        }).join('')}</div>`
+        : '<div class="top-sub">Никого не нашлось. Попробуйте другой запрос.</div>'}`
+        : '<div class="top-sub" style="margin-top:8px">Введите хотя бы две буквы.</div>'}
 
       <h3 style="margin:18px 0 10px">Режим</h3>
       ${Object.keys(РЕЖИМЫ_ГРУППЫ).map(k => `
@@ -4630,16 +4665,24 @@ function показатьСозданиеГруппы(){
         const o = ROL.persons.find(x => x.id === id);
         return o ? `<span class="chip ${RISK_LETTER[o.risk]}">${esc(o.name)}
           <button class="link" onclick="убратьИзЧерновика('${id}')">убрать</button></span>` : '';
-      }).join('')}</div>` : '<div class="top-sub">Никто не выбран. Людей можно добавить из досье кнопкой «В свою группу».</div>'}
+      }).join('')}</div>` : '<div class="top-sub">Никто не выбран. Найдите людей поиском выше или добавьте из досье.</div>'}
 
-      <div class="note" style="margin-top:16px; margin-bottom:0">Системные подборки настроены ЗТ
-        как стартовый профиль. Признаки, пороги и состав меняются по требованиям ФСИН —
-        ОСНОВА хранит версию настроек, чтобы было видно, по какой методике собрана подборка.</div>
+      <div class="note" style="margin-top:16px; margin-bottom:0">Если людей много и их объединяет
+        общий признак — отряд, статья, категория учёта, — быстрее собрать группу по признаку:
+        состав подберётся сам.</div>
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn primary" onclick="создатьГруппу()" ${ч.люди.length ? '' : 'disabled'}>Создать группу</button>
+      <button class="btn" onclick="открытьГруппуПоПризнаку()">По признаку</button>
+      <button class="btn primary" onclick="создатьГруппу()" ${ч.люди.length ? '' : 'disabled'}>
+        Создать группу${ч.люди.length ? ' · ' + ч.люди.length : ''}</button>
     </div>`);
+}
+
+function добавитьВЧерновик(id){
+  if (!S.черновикГруппы) return;
+  if (!S.черновикГруппы.люди.includes(id)) S.черновикГруппы.люди.push(id);
+  показатьСозданиеГруппы();
 }
 
 function выбратьРежимГруппы(k){ S.черновикГруппы.mode = k; показатьСозданиеГруппы(); }
