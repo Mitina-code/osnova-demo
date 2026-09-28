@@ -541,7 +541,12 @@ a.btn{text-decoration:none}
       <div class="top-right">
         <div class="ctx">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
-          <span>Учреждение: <b>ИК-5</b></span>
+          <span>Учреждение:</span>
+          <select id="facSelect" onchange="сменитьУчреждение(this.value)"
+                  style="background:none; border:0; font:inherit; font-weight:600; color:var(--text); cursor:pointer">
+            <option value="ик">ИК-5</option>
+            <option value="сизо">СИЗО-2</option>
+          </select>
         </div>
         <div class="user" onclick="go('profile')" role="button" tabindex="0" title="Открыть профиль"
              onkeydown="if(event.key==='Enter')go('profile')">
@@ -723,6 +728,7 @@ const S = {
   графРежим:'risk',          // что показывать на графе связей
   черновикГруппы:null, черновикКонтакта:null, черновикДелегата:null,
   профФильтр:'all', черновикБеседы:null, черновикСнятия:null, черновикРапорта:null,
+  facility:'ик',             // тип учреждения: ик | сизо
   queue: [],
   log: [],
   openId: null,
@@ -899,6 +905,8 @@ function renderNav(){
   // переключатель роли
   const rb = document.getElementById('roleSelect');
   if (rb && rb.value !== S.role) rb.value = S.role;
+  const fb = document.getElementById('facSelect');
+  if (fb && fb.value !== S.facility) fb.value = S.facility;
   const [имя, должность, инициалы] = роль.кто;
   const un = document.getElementById('userName'); if (un) un.textContent = имя;
   const ur = document.getElementById('userRole'); if (ur) ur.textContent = должность;
@@ -1081,6 +1089,7 @@ function rowHTML(x){
         <span class="chip">${esc(x.dir)}</span>
         <span class="chip">${esc(МЕДИУМ(x))}</span>
         ${короткий?'<span class="chip g" title="Текст целиком помещается в строку — открывать карточку не нужно">коротко</span>':''}
+        ${меткаСоучастника(x.pid)}
         ${x.sample?'<span class="chip a" title="Отмечен для точечного контроля: можно посмотреть и убедиться, что анализатор не ошибся">точечный контроль</span>':''}
         ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
       </div>
@@ -2098,10 +2107,12 @@ function человекHTML(p){
     <div class="stripe ${RISK_LETTER[p.risk]}"></div>
     <div>
       <div class="who">${esc(p.name)}</div>
-      <div class="meta">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(p.unit)}</div>
+      <div class="meta">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(местоЧеловека(p))}</div>
       <div class="marks">
         <span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span>
         <span class="chip">контактов: ${p.contacts.length}</span>
+        ${меткаРазрешения(p.id)}
+        ${меткаСоучастника(p.id)}
         ${неподтв ? `<span class="chip o">не подтверждено: ${неподтв}</span>` : ''}
       </div>
     </div>
@@ -2117,16 +2128,19 @@ function открытьДосье(id){
   const p = ROL.persons.find(x => x.id === id); if (!p) return;
   modal(`
     <div class="mh"><div><h3>${esc(p.name)}</h3>
-      <div class="top-sub">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(p.unit)} · ${esc(p.facility)}</div></div>
+      <div class="top-sub">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(местоЧеловека(p))} · ${esc(У().name)}</div></div>
       <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
     <div class="mb">
       <div class="kv">
+        <div class="k">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}</div><div>${esc(местоЧеловека(p))}</div>
         <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
         <div class="k">Активность</div><div>${esc(активностьЧеловека(p))}</div>
         <div class="k">Статья</div><div>${esc(p.article)}</div>
         <div class="k">В учреждении с</div><div>${esc(p.since)}</div>
         <div class="k">Продукты ЗТ</div><div>${p.zt ? 'пользуется' : 'не пользуется — перечня контактов нет'}</div>
       </div>
+
+      ${блокСоучастников(p.id)}
 
       <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
       <div class="clist">
@@ -3685,9 +3699,9 @@ function актИзЖурнала(e){
     получатель: e.to,
     осуждённый: чел ? чел.name : (входящее ? e.to : e.from),
     отряд: m.unit || '—',
-    норма: 'статья 91 Уголовно-исполнительного кодекса Российской Федерации; '
-         + 'Правила внутреннего распорядка исправительных учреждений, утверждённые '
+    норма: У().норма + '; Правила внутреннего распорядка, утверждённые '
          + 'приказом Минюста России от 04.07.2022 № 110',
+    решение: У().решениеАкта,
     установлено: m.sum || e.basis,
     мотив: m.full || e.basis,
     составилДолжность: 'Цензор',
@@ -3708,9 +3722,9 @@ function актИзОчереди(a){
     получатель: входящее ? a.person : a.counterpart,
     осуждённый: a.person,
     отряд: a.unit,
-    норма: 'статья 91 Уголовно-исполнительного кодекса Российской Федерации; '
-         + 'Правила внутреннего распорядка исправительных учреждений, утверждённые '
+    норма: У().норма + '; Правила внутреннего распорядка, утверждённые '
          + 'приказом Минюста России от 04.07.2022 № 110',
+    решение: У().решениеАкта,
     установлено: a.ground,
     мотив: a.reason,
     составилДолжность: 'Цензор',
@@ -3721,7 +3735,7 @@ function актИзОчереди(a){
 /* ---------- сам бланк ---------- */
 
 function бланкАкта(д, последний){
-  const ф = ROL.facility || {};
+  const ф = У();
   const строка = (к, з) => `<div class="бл-к">${esc(к)}</div><div class="бл-з">${esc(з)}</div>`;
   return `
   <div class="бланк${последний ? ' последний' : ''}">
@@ -3763,13 +3777,12 @@ function бланкАкта(д, последний){
       ${строка('Направление', д.направление)}
       ${строка('Отправитель', д.отправитель)}
       ${строка('Адресат', д.получатель)}
-      ${строка('Отряд осуждённого', д.отряд)}
+      ${строка(S.facility === 'сизо' ? 'Камера' : 'Отряд ' + Т('человекРод'), д.отряд)}
     </div>
 
     <p class="бл-абз"><b>Установлено:</b> ${esc(д.установлено)}. ${esc(д.мотив)}</p>
 
-    <p class="бл-абз"><b>Решение:</b> почтовое отправление адресату не вручать
-      (не отправлять), изъять и приобщить к личному делу осуждённого.</p>
+    <p class="бл-абз"><b>Решение:</b> ${esc(д.решение || У().решениеАкта)}.</p>
 
     <div class="бл-подписи">
       <div class="бл-подпись">
@@ -3784,7 +3797,7 @@ function бланкАкта(д, последний){
 
     <div class="бл-подписи">
       <div class="бл-подпись">
-        <span class="бл-кто">Осуждённый</span>
+        <span class="бл-кто">${esc(Т('человек').charAt(0).toUpperCase() + Т('человек').slice(1))}</span>
         <span class="бл-линия"></span>
         <span class="бл-имя">${esc(инициалы(д.осуждённый))}</span>
       </div>
@@ -3799,7 +3812,7 @@ function бланкАкта(д, последний){
 /* ---------- реестр актов: тоже документ ---------- */
 
 function реестрАктовДок(список){
-  const ф = ROL.facility || {};
+  const ф = У();
   return `
   <div class="бланк последний">
     <div class="бл-верх">
@@ -5174,6 +5187,134 @@ function renderSignals(){
     ${список.length ? `<div class="rows">${список.map(событиеHTML).join('')}</div>`
       : `<div class="empty"><div class="big">${ICON.check}</div><b>Сигналов нет</b></div>`}
   `;
+}
+
+/* ====================================================================
+   ТИП УЧРЕЖДЕНИЯ: КОЛОНИЯ И СЛЕДСТВЕННЫЙ ИЗОЛЯТОР
+
+   Один и тот же продукт работает в ИК и в СИЗО, но это не замена слов.
+   В СИЗО содержатся подозреваемые и обвиняемые — вина не установлена,
+   а уголовное дело находится в производстве следствия или суда. Отсюда
+   три отличия, которые меняют саму работу:
+
+     1. Недопущенное письмо не изымается «в личное дело», а направляется
+        лицу или органу, в производстве которых дело, либо в суд.
+     2. Телефонный разговор возможен только по разрешению следствия
+        или суда. Нет разрешения — разговор невозможен вообще.
+     3. Лица по одному делу содержатся раздельно, поэтому общий адресат
+        у соучастников — сигнал первой величины для оперативника.
+
+   Переключатель стоит в шапке рядом с названием учреждения.
+   ==================================================================== */
+
+const ТИПЫ = ROL.facilityTypes || {};
+const СИЗО = ROL.sizo || { записи: {}, дела: [] };
+
+/* Текущее учреждение и его словарь. */
+function У(){ return ТИПЫ[S.facility] || ТИПЫ.ик || {}; }
+/* Короткий доступ к термину: Т('человек') → «осуждённый» или «обвиняемый». */
+function Т(ключ){ return У()[ключ] || ''; }
+
+/* Сведения по человеку в режиме СИЗО: камера, дело, соучастники, разрешение. */
+function сизоДанные(pid){ return S.facility === 'сизо' ? (СИЗО.записи[pid] || null) : null; }
+
+/* Где человек содержится: отряд или камера. */
+function местоЧеловека(p){
+  const с = сизоДанные(p.id);
+  return с ? с.cell : p.unit;
+}
+
+function сменитьУчреждение(t){
+  S.facility = t;
+  S.shown = 30; S.openId = null; S.conveyor = null;
+  render();
+  toast('Учреждение: ' + У().name + ' · ' + У().контингент);
+}
+
+/* ---------- соучастники ----------
+   Связь между лицами по одному делу — то, ради чего в СИЗО вообще
+   смотрят переписку оперативно. Ищем и прямую связь, и через общего
+   адресата: соучастники редко пишут друг другу напрямую. */
+
+function соучастники(pid){
+  const с = сизоДанные(pid);
+  if (!с || !с.coDefendants.length) return [];
+  return с.coDefendants.map(id => ROL.persons.find(p => p.id === id)).filter(Boolean);
+}
+
+/* Общий адресат у соучастников: номер, который есть и у него, и у того,
+   с кем он проходит по делу. */
+function связьЧерезПосредника(pid){
+  const со = соучастники(pid);
+  if (!со.length) return [];
+  const p = ROL.persons.find(x => x.id === pid);
+  if (!p) return [];
+  const найдено = [];
+  p.contacts.forEach(c => {
+    const общие = со.filter(o => o.contacts.some(x => x.phone === c.phone));
+    if (общие.length) найдено.push({ контакт: c, соучастники: общие });
+  });
+  return найдено;
+}
+
+/* Блок для досье и для карточки материала. */
+function блокСоучастников(pid){
+  if (S.facility !== 'сизо') return '';
+  const с = сизоДанные(pid);
+  if (!с) return '';
+  const со = соучастники(pid);
+  const через = связьЧерезПосредника(pid);
+
+  return `
+    <h3 style="margin:22px 0 10px; font-size:16px">Уголовное дело</h3>
+    <div class="kv">
+      <div class="k">Номер дела</div><div>${esc(с.caseNo)}</div>
+      <div class="k">В производстве</div><div>${esc(с.body)}</div>
+      <div class="k">Процессуальный статус</div><div>${esc(с.status)}</div>
+      <div class="k">Разрешение на разговоры</div>
+      <div>${с.permit
+        ? `<span class="chip g">есть</span> ${esc(с.permit.no)} от ${esc(с.permit.by)}, до ${esc(с.permit.until)}`
+        : '<span class="chip r">нет</span> телефонные разговоры не предоставляются'}</div>
+    </div>
+
+    ${со.length ? `
+      <div class="note warn" style="margin-top:14px"><b>По делу проходят ещё ${со.length}
+        ${plural(со.length, 'человек', 'человека', 'человек')}.</b>
+        Лица по одному делу содержатся раздельно. Любая связь между ними,
+        в том числе через общего адресата, требует проверки.</div>
+      <div class="marks" style="margin-top:10px">
+        ${со.map(o => `<button class="chip ${RISK_LETTER[o.risk]}"
+          onclick="открытьДосье('${o.id}')">${esc(o.name)} · ${esc(местоЧеловека(o))}</button>`).join('')}
+      </div>` : ''}
+
+    ${через.length ? `
+      <div class="note warn" style="margin-top:14px"><b>Общий адресат с соучастником — ${через.length}.</b>
+        Это основной способ связи между теми, кого развели по камерам.</div>
+      <div class="clist" style="margin-top:12px">
+        ${через.map(x => `
+          <div class="citem"><div>
+            <div class="w">${esc(x.контакт.name)} · ${esc(x.контакт.phone)}</div>
+            <div class="s">этот же номер у: ${x.соучастники.map(o => esc(o.name)).join(', ')}</div>
+          </div></div>`).join('')}
+      </div>` : ''}`;
+}
+
+/* Короткая метка для ленты цензуры и очереди оперативника. */
+function меткаСоучастника(pid){
+  if (S.facility !== 'сизо') return '';
+  const через = связьЧерезПосредника(pid);
+  if (!через.length) return '';
+  return '<span class="chip r" title="Номер адресата совпадает с номером у лица, проходящего по тому же делу">связь с соучастником</span>';
+}
+
+/* Метка разрешения: в СИЗО без него разговоров нет. */
+function меткаРазрешения(pid){
+  if (S.facility !== 'сизо') return '';
+  const с = сизоДанные(pid);
+  if (!с) return '';
+  return с.permit
+    ? '<span class="chip g" title="Разрешение ' + esc(с.permit.no) + '">разговоры разрешены</span>'
+    : '<span class="chip o" title="Телефонные разговоры возможны только с разрешения следствия или суда">без разрешения</span>';
 }
 
 /* ---------------- маршрутизация ---------------- */
