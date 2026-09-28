@@ -292,6 +292,18 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .rolebox label.lab{cursor:default}
 
 
+/* Ряд кнопок выбора с длинными подписями: переносится, а не уезжает за край. */
+.seg.сборный{flex-wrap:wrap; height:auto; padding:6px}
+.seg.сборный button{white-space:normal; text-align:left; line-height:1.35; padding:7px 11px}
+
+/* ---------- зона скана заявления ---------- */
+.drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
+  text-align:center; background:var(--bg); margin-bottom:16px}
+.drop-ико{width:52px; height:52px; margin:0 auto 12px; border-radius:15px;
+  background:var(--lilac); color:var(--primary); display:grid; place-items:center}
+.drop-зона b{display:block; font-size:16px; margin-bottom:5px}
+.drop-зона span{color:var(--muted); font-size:14px}
+
 /* ---------- граф связей ----------
    Радиальная раскладка: человек в центре, контакты по кругу.
    Красным — связи, поднятые системой; серым пунктиром — обычные. */
@@ -608,9 +620,12 @@ const РИСК_СЛОВОМ = { red:'высокий', orange:'повышенны
 const POP = (() => {
   const сырое = window.OSNOVA_POP;
   if (!сырое) return { люди: [], поId: {}, сводка: {}, параметры: {} };
-  const люди = сырое.люди.map(([id, name, dob, lang, unit, article, since, risk, zt, contacts]) => ({
+  const люди = сырое.люди.map(([id, name, dob, lang, unit, article, since, risk, zt, confirmed, contacts]) => ({
     id, name, dob, lang, unit, article, since, risk,
     zt: !!zt,
+    /* Подтверждена ли личность оперативным сотрудником. Без подтверждения
+       человеку доступна только текстовая переписка. */
+    confirmed: !!confirmed,
     citizenship: СТРАНА[lang] || lang,
     riskText: РИСК_СЛОВОМ[risk],
     contacts: contacts.map(([cn, cr, cp, cv, cprot]) => ({
@@ -669,6 +684,9 @@ function fromContract(m) {
     id: m.id,
     pid: m.pid,
     ci: m.ci,
+    /* Фамилия адресата, которой в картотеке нет. Тогда вносить некого:
+       письмо отклоняется с отметкой «адресат не числится». */
+    toUnknown: m.toUnknown || null,
     risk: a.risk,
     at: hhmm(m.at),
     from: уч ? уч.отправитель.name : '—',
@@ -738,6 +756,12 @@ const S = {
   facility:'ик',             // тип учреждения: ик | сизо
   признаки:null, имяГруппы:'', режимГруппы:'signal', поискГруппы:'',
   сортировкаЛюдей:'default', фильтрЛюдей:'all',
+  вкладкаЛюдей:'card',       // картотека или входящие
+  видДокумента:'all',        // фильтр на экране подписи
+  вкладкаПоручений:'issued', // выданные или полученные
+  электронныеОбращения:true, // приём через терминал и ЛК родственника
+  ио:null,                   // исполняющий обязанности: кто и на какие даты
+  порОснование:null, порТекст:'', порКому:'',
   queue: [],
   log: [],
   openId: null,
@@ -843,7 +867,7 @@ const РАЗДЕЛЫ = {
   reports:     [ICON.reports,    'Журналы и отчёты'],
   register:    [ICON.archive,    'Журнал регистрации'],
   profile:     [ICON.staff,      'Профиль'],
-  signing:     [ICON.legal,      'Акты на подпись'],
+  signing:     [ICON.legal,      'Документы на подпись'],
   feed:        [ICON.feed,       'Персональная лента'],
   handed:      [ICON.inbox,      'От цензора'],
   situation:   [ICON.facility,   'Обстановка'],
@@ -860,6 +884,8 @@ const РАЗДЕЛЫ = {
   live:        [ICON.live,       'Контроль переговоров'],
   completed:   [ICON.completed,  'Завершённые сегодня'],
   assignments: [ICON.tasks,      'Мои поручения'],
+  orders:      [ICON.tasks,      'Поручения'],
+  appeals:     [ICON.complaints, 'Обращения'],
   channel:     [ICON.channel,    'Канал ОСНОВЫ'],
   legal:       [ICON.legal,      'Нормативные акты'],
   support:     [ICON.support,    'Поддержка'],
@@ -871,7 +897,7 @@ const РОЛИ = {
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'situation',
                 разделы:['situation','prevention','handed','signals','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
-                разделы:['facility','signing','complaints','assignments','audit','staff','services','channel','support','legal'] },
+                разделы:['facility','signing','orders','appeals','complaints','audit','staff','services','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
                 разделы:['live','completed','assignments','channel','support','legal'] },
 };
@@ -897,7 +923,9 @@ function renderNav(){
     live: LIVE.calls.filter(c=>!c.ended).length,
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
     staff: LIVE.staff.filter(x=>x.review).length,
-    signing: актовЖдёт(),
+    signing: наПодписьВсего(),
+    orders: ПОРУЧЕНИЯ.filter(поручениеОткрыто).length,
+    appeals: обращенийЖдёт(),
     handed: переданные().length,
     situation: требуетДействия(),
     prevention: просроченные().length,
@@ -1108,6 +1136,7 @@ function rowHTML(x){
         <span class="chip">${esc(МЕДИУМ(x))}</span>
         ${короткий?'<span class="chip g" title="Текст целиком помещается в строку — открывать карточку не нужно">коротко</span>':''}
         ${меткаСоучастника(x.pid)}
+        ${адресатНеПодтверждён(x) ? '<span class="chip o" title="Личность адресата не подтверждена оперативным сотрудником">адресат не подтверждён</span>' : ''}
         ${x.sample?'<span class="chip a" title="Отмечен для точечного контроля: можно посмотреть и убедиться, что анализатор не ошибся">точечный контроль</span>':''}
         ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
       </div>
@@ -1127,6 +1156,7 @@ function rowHTML(x){
       ${короткий && x.risk !== 'red'
         ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>` : ''}
       <button class="btn sm" onclick="openContext('${x.id}')" title="История переписки за три месяца">Контекст</button>
+      ${адресатНеПодтверждён(x) ? `<button class="btn sm" onclick="внестиАдресата('${x.id}')" title="Личность адресата не подтверждена">Адресат</button>` : ''}
       <button class="btn sm" onclick="передатьОперативнику('${x.id}')" title="Передать оперативному сотруднику">Оперативнику</button>
       <button class="btn sm ${короткий && x.risk !== 'red' ? '' : 'primary'}" onclick="openCard('${x.id}')">Открыть</button>
     </div>
@@ -2105,7 +2135,16 @@ function renderPeople(){
 
   document.getElementById('content').innerHTML = `
     <div class="page-head"><h1>Люди и связи</h1>
-      <p>Досье на любого человека в контуре: кто с кем общается и насколько это подтверждено.</p></div>
+      <p>Досье на любого человека в контуре и обновление базы: заявления, терминал, внесённые цензором.</p></div>
+
+    <div class="bar">
+      <div class="seg">
+        <button class="${S.вкладкаЛюдей==='card'?'on':''}" onclick="S.вкладкаЛюдей='card'; render()">Картотека · ${все.length}</button>
+        <button class="${S.вкладкаЛюдей==='inbox'?'on':''}" onclick="S.вкладкаЛюдей='inbox'; render()">Входящие · ${ждутРазбора().length}</button>
+      </div>
+    </div>
+
+    ${S.вкладкаЛюдей === 'inbox' ? блокВходящих() : `
 
     <div class="bar">
       <input id="pq" class="search" placeholder="Поиск по фамилии или дате рождения" value="${esc(S.personQuery||'')}"
@@ -2141,7 +2180,7 @@ function renderPeople(){
 
     ${показ.length ? `<div class="rows">${показ.map(человекHTML).join('')}</div>
       ${список.length > показ.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${список.length - показ.length}</button></div>` : ''}`
-      : `<div class="empty"><b>Никого не найдено</b><div>Попробуйте другой запрос или отряд.</div></div>`}
+      : `<div class="empty"><b>Никого не найдено</b><div>Попробуйте другой запрос или отряд.</div></div>`}`}
   `;
 }
 
@@ -2161,6 +2200,7 @@ function человекHTML(p){
           : ''; })()}
         ${(() => { const кр = сигналыЧеловека(p.id).красные.length;
           return кр ? `<span class="chip r" title="Красные сигналы за три месяца">красных сигналов: ${кр}</span>` : ''; })()}
+        ${p.confirmed ? '' : '<span class="chip o" title="Личность не подтверждена: доступна только текстовая переписка">только переписка</span>'}
         ${меткаРазрешения(p.id)}
         ${неподтв ? `<span class="chip o">не подтверждено: ${неподтв}</span>` : ''}
       </div>
@@ -2182,6 +2222,10 @@ function открытьДосье(id){
     <div class="mb">
       <div class="kv">
         <div class="k">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}</div><div>${esc(местоЧеловека(p))}</div>
+        <div class="k">Личность</div>
+        <div>${p.confirmed
+          ? '<span class="chip g">подтверждена</span> доступны звонки и сообщения'
+          : '<span class="chip o">не подтверждена</span> доступна только текстовая переписка'}</div>
         <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
         <div class="k">Активность</div><div>${esc(активностьЧеловека(p))}</div>
         <div class="k">Статья</div><div>${esc(p.article)}</div>
@@ -2607,8 +2651,15 @@ function renderStaff(){
   const проверить = все.filter(s => s.review).length;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Доступы сотрудников</h1>
-      <p>Кто имеет доступ к ОСНОВЕ, когда последний раз им пользовался и кто аттестован.</p></div>
+    ${блокИО()}
+
+    <div class="page-head head-row">
+      <div><h1>Доступы сотрудников</h1>
+        <p>Кто имеет доступ к ОСНОВЕ, когда последний раз им пользовался и кто аттестован.</p></div>
+      <div class="head-acts">
+        <button class="btn" onclick="открытьИО()">Назначить исполняющего обязанности</button>
+      </div>
+    </div>
 
     <div class="note">Аттестацию проставляете вы. Неаттестованными обычно бывают цензоры
       и бухгалтеры — это гражданские должности по трудовому договору. О каждом таком
@@ -3440,66 +3491,6 @@ function склАкт(n){
 }
 
 /* ---------------- акты на подпись ---------------- */
-
-function renderSigning(){
-  const ждут = АКТЫ.filter(a => a.status === 'waiting');
-  const решённые = АКТЫ.filter(a => a.status !== 'waiting');
-  const просрочено = ждут.filter(a => a.overdue).length;
-
-  const карточка = a => `
-    <div class="row">
-      <div class="stripe ${a.overdue ? 'r' : 'o'}"></div>
-      <div>
-        <div class="who">${esc(a.person)}</div>
-        <div class="meta">${esc(a.unit)} · ${esc(a.dir)} ${esc(a.channel)} · ${esc(a.counterpart)}</div>
-        <div class="marks">
-          <span class="chip">${esc(a.id)}</span>
-          <span class="chip ${a.overdue ? 'r' : 'o'}">${esc(a.due)}</span>
-          <span class="chip">подготовила ${esc(a.by)}</span>
-        </div>
-      </div>
-      <div>
-        <div class="sum">${esc(a.ground)}</div>
-        <div class="why">${esc(a.norm)}</div>
-      </div>
-      <div class="acts">
-        <button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button>
-        <button class="btn sm primary" onclick="подписатьАкт('${a.id}')">Подписать</button>
-      </div>
-    </div>`;
-
-  const решённая = a => `
-    <div class="row">
-      <div class="stripe ${a.status === 'signed' ? 'g' : 'o'}"></div>
-      <div><div class="who">${esc(a.person)}</div>
-        <div class="meta">${esc(a.id)} · ${esc(a.ground)}</div></div>
-      <div><div class="sum">${a.status === 'signed' ? 'Подписан' : 'Возвращён на доработку'}</div>
-        ${a.note ? `<div class="why">${esc(a.note)}</div>` : ''}</div>
-      <div class="acts"><button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button></div>
-    </div>`;
-
-  document.getElementById('content').innerHTML = `
-    <div class="page-head head-row">
-      <div><h1>Акты на подпись</h1>
-        <p>Решение о недопуске принимает цензор. Акт подписывает аттестованный сотрудник — это вы.</p></div>
-      ${ждут.length ? `<div class="head-acts">
-        <button class="btn" onclick="подписатьВсе()">${ICON.check} Подписать все</button></div>` : ''}
-    </div>
-
-    ${просрочено ? `<div class="note warn"><b>Просрочено: ${просрочено}.</b>
-      Пока акт не подписан, недопуск не оформлен: материал задержан, а документального основания нет.
-      Это первое, что смотрят при проверке.</div>` : ''}
-
-    <h2 class="sect">Ждут подписи · ${ждут.length}</h2>
-    ${ждут.length
-      ? `<div class="rows">${ждут.map(карточка).join('')}</div>`
-      : `<div class="empty"><div class="big">${ICON.check}</div><b>Неподписанных актов нет</b>
-         <div>Всё оформлено в срок.</div></div>`}
-
-    ${решённые.length ? `<h2 class="sect">Рассмотрено · ${решённые.length}</h2>
-      <div class="rows">${решённые.map(решённая).join('')}</div>` : ''}
-  `;
-}
 
 function открытьАкт(id){
   const a = АКТЫ.find(x => x.id === id); if (!a) return;
@@ -5756,6 +5747,1248 @@ function блокОпасныхСвязей(p){
     <b>Признаки для проверки:</b> ${esc(части.join('; '))}.</div>`;
 }
 
+/* ====================================================================
+   ОБНОВЛЕНИЕ БАЗЫ: КАК ЧЕЛОВЕК В НЕЁ ПОПАДАЕТ
+
+   Чтобы звонить или отправлять голосовые и видеосообщения, человек пишет
+   заявление. Чаще всего от руки, на бумаге. Бумага остаётся у учреждения
+   в любом случае.
+
+   Три пути, и все три сходятся в одном месте — во «Входящих» у
+   оперативного сотрудника:
+
+     1. БУМАГА. Заявление принесли воспитателю или оперу. Он либо вбивает
+        данные руками, либо сканирует заявление и запускает распознавание:
+        система заполняет карточку, её остаётся проверить и сохранить.
+
+     2. ТЕРМИНАЛ. Человек внёс данные сам. Они ждут подтверждения личности:
+        без него заявление силы не имеет.
+
+     3. ЦЕНЗОР. Переписка ничем не ограничена, и письмо приходит на того,
+        кого в базе нет. Цензор сверяет ФИО по картотеке учреждения:
+        числится — вносит сама, не числится — отклоняет письмо с отметкой
+        «адресат не числится». Внесённый ею человек попадает сюда же,
+        на подтверждение личности. Это не срочно и может накапливаться.
+
+   Главное ограничение: пока личность не подтверждена оперативным
+   сотрудником, человеку доступна только текстовая переписка. Звонки,
+   голосовые и видео — после подтверждения.
+   ==================================================================== */
+
+const ЗАЯВЛЕНИЯ = (ROL.applications || []).map(z => ({ ...z }));
+
+function ждутРазбора(){ return ЗАЯВЛЕНИЯ.filter(z => z.status === 'новое' || z.status === 'на подтверждении'); }
+function разобранные(){ return ЗАЯВЛЕНИЯ.filter(z => z.status === 'подтверждено' || z.status === 'отклонено'); }
+
+const ИСТОЧНИК_ПОДПИСЬ = {
+  бумага:   ['Бумажное заявление', 'принесено воспитателю или оперативному сотруднику'],
+  терминал: ['Терминал', 'человек внёс данные сам'],
+  цензор:   ['От цензора', 'появился из входящего письма'],
+};
+
+/* Можно ли человеку что-то кроме текста. */
+function толькоТекст(pid){
+  const p = POP.поId[pid];
+  return !!p && !p.confirmed;
+}
+
+/* ---------- входящие у оперативного сотрудника ---------- */
+
+function блокВходящих(){
+  const ждут = ждутРазбора();
+  const строка = z => {
+    const [подпись, пояснение] = ИСТОЧНИК_ПОДПИСЬ[z.source] || [z.source, ''];
+    return `
+    <div class="row">
+      <div class="stripe ${z.source === 'цензор' ? 'o' : z.source === 'терминал' ? 'g' : ''}"></div>
+      <div>
+        <div class="who">${esc(z.person)}</div>
+        <div class="meta">${esc(z.dob)} · ${esc(z.unit)} · ст. ${esc(z.article)}</div>
+        <div class="marks">
+          <span class="chip">${esc(z.id)}</span>
+          <span class="chip ${z.source === 'цензор' ? 'o' : ''}" title="${esc(пояснение)}">${esc(подпись)}</span>
+          <span class="chip">${esc(z.at)}</span>
+          ${z.letter ? `<span class="chip">письмо ${esc(z.letter)}</span>` : ''}
+        </div>
+      </div>
+      <div>
+        <div class="sum">Просит: ${esc(z.want)}</div>
+        <div class="why">Контакт: ${esc(z.contact)}${z.phone ? ' · ' + esc(z.phone) : ''}</div>
+      </div>
+      <div class="acts">
+        ${z.source === 'бумага'
+          ? `<button class="btn sm" onclick="внестиВручную('${z.id}')">Внести вручную</button>
+             <button class="btn sm primary" onclick="сканЗаявления('${z.id}')">Скан и распознать</button>`
+          : `<button class="btn sm" onclick="отклонитьЗаявление('${z.id}')">Отклонить</button>
+             <button class="btn sm primary" onclick="подтвердитьЛичность('${z.id}')">Подтвердить личность</button>`}
+      </div>
+    </div>`;
+  };
+
+  const поИсточникам = {};
+  ждут.forEach(z => { поИсточникам[z.source] = (поИсточникам[z.source] || 0) + 1; });
+
+  return `
+    <div class="note">Три пути, которыми человек попадает в базу: бумажное заявление,
+      терминал и внесение цензором из входящего письма. Пока личность не подтверждена,
+      человеку доступна <b>только текстовая переписка</b> — звонки, голосовые и видео после подтверждения.</div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.inbox}</div>
+        <div class="k">Ждут разбора</div><div class="v tnum">${ждут.length}</div><div class="d">не горит, можно копить</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.printer}</div>
+        <div class="k">С бумаги</div><div class="v tnum">${поИсточникам['бумага'] || 0}</div><div class="d">заявления от руки</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.services}</div>
+        <div class="k">С терминала</div><div class="v tnum">${поИсточникам['терминал'] || 0}</div><div class="d">внесли сами</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.channel}</div>
+        <div class="k">От цензора</div><div class="v tnum">${поИсточникам['цензор'] || 0}</div><div class="d">из входящих писем</div></div>
+    </div>
+
+    <h2 class="sect">Ждут разбора · ${ждут.length}</h2>
+    ${ждут.length ? `<div class="rows">${ждут.map(строка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Входящих нет</b>
+         <div>Заявления и внесённые цензором люди появятся здесь.</div></div>`}
+
+    <h2 class="sect">Разобрано за три месяца · ${разобранные().length}</h2>
+    <div class="журнал">
+      <table class="журнал-таб" style="min-width:0">
+        <thead><tr><th>№</th><th>Дата</th><th>Человек</th><th>Путь</th><th>Просил</th><th>Итог</th><th>Кто</th></tr></thead>
+        <tbody>${разобранные().slice(0, 25).map(z => `
+          <tr>
+            <td>${esc(z.id)}</td><td class="tnum">${esc(z.at)}</td>
+            <td>${esc(z.person)}</td>
+            <td>${esc((ИСТОЧНИК_ПОДПИСЬ[z.source] || [z.source])[0])}</td>
+            <td>${esc(z.want)}</td>
+            <td><span class="chip ${z.status === 'подтверждено' ? 'g' : 'r'}">${esc(z.status)}</span></td>
+            <td>${esc(z.by || '')}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    ${разобранные().length > 25 ? `<div class="top-sub" style="margin-top:8px">показаны последние 25 из ${разобранные().length}</div>` : ''}`;
+}
+
+/* ---------- ручное внесение ---------- */
+
+function внестиВручную(id, распознано){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  const р = !!распознано;
+  modal(`
+    <div class="mh"><div><h3>${р ? 'Распознанное заявление' : 'Внести данные вручную'}</h3>
+      <div class="top-sub">${esc(z.id)} · ${esc((ИСТОЧНИК_ПОДПИСЬ[z.source] || [z.source])[0])} · ${esc(z.at)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${р ? `<div class="note ok" style="margin-top:0"><b>Заявление распознано.</b>
+        Поля заполнены системой — проверьте их и поправьте, где распознано неточно.
+        Скан остаётся приложенным к карточке.</div>`
+        : `<div class="note" style="margin-top:0">Бумажное заявление остаётся в учреждении.
+        В карточку вносятся сведения из него.</div>`}
+
+      <div class="два">
+        <label class="fld">Фамилия, имя, отчество<input id="regName" value="${esc(z.person)}"></label>
+        <label class="fld">Дата рождения<input id="regDob" value="${esc(z.dob)}"></label>
+      </div>
+
+      <div class="note" style="margin-top:0">
+        <button class="btn sm" onclick="регНайти()">Найти в картотеке</button>
+        Если человек уже в картотеке — выберите его, и остальные поля заполнятся сами.
+        Набирать вручную придётся только то, чего в базе нет.
+        <div id="regНайдено" style="margin-top:10px"></div>
+      </div>
+
+      <div class="два">
+        <label class="fld">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}
+          ${выборИз('regUnit', местаУчреждения(), z.unit)}</label>
+        <label class="fld">Статья${выборИз('regArt', статьиУчреждения(), z.article)}</label>
+      </div>
+
+      <label class="fld">Что просит</label>
+      <div class="seg" style="margin-bottom:14px">
+        ${видыЗапроса().map(в =>
+          `<button class="${в === z.want ? 'on' : ''}" onclick="регВид(this, '${esc(в)}')">${esc(в)}</button>`).join('')}
+      </div>
+      <input type="hidden" id="regWant" value="${esc(z.want)}">
+
+      <div class="два">
+        <label class="fld">Заявленный контакт<input id="regContact" value="${esc(z.contact)}"></label>
+        <label class="fld">Телефон<input id="regPhone" value="${esc(z.phone)}"></label>
+      </div>
+
+      ${р ? `<div class="note warn">Распознавание рукописного текста ошибается на фамилиях
+        и номерах. Сверьте их со сканом до сохранения.</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьЗаявление('${z.id}')">Сохранить и подтвердить</button>
+    </div>`);
+}
+
+/* ---------- скан и распознавание ---------- */
+
+function сканЗаявления(id){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  modal(`
+    <div class="mh"><div><h3>Скан заявления</h3>
+      <div class="top-sub">${esc(z.id)} · ${esc(z.person)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="drop-зона">
+        <div class="drop-ико">${ICON.printer}</div>
+        <b>Заявление отсканировано</b>
+        <span>заявление_${esc(z.id)}.pdf · 1 лист · рукописный текст</span>
+      </div>
+      <div class="note">Распознавание вытащит из скана ФИО, дату рождения, отряд и заявленные
+        контакты и подставит их в карточку. Скан останется приложенным — на него ссылаются
+        при проверке, и он подтверждает, что бумага была.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn" onclick="внестиВручную('${z.id}')">Внести руками</button>
+      <button class="btn primary" onclick="распознать('${z.id}')">Распознать</button>
+    </div>`);
+}
+
+function распознать(id){
+  toast('Распознавание…');
+  setTimeout(() => внестиВручную(id, true), 550);
+}
+
+/* ---------- сохранение и подтверждение ---------- */
+
+/* Набор текста — самое медленное место в работе с заявлением. Поэтому всё,
+   что можно выбрать, выбирается: отряд и статья — списком, вид просьбы —
+   кнопками, а человека из картотеки достаточно найти по трём буквам фамилии.
+   Руками остаются только сведения, которых в базе нет: контакт и телефон. */
+
+function местаУчреждения(){
+  return [...new Set((POP.люди || []).map(местоЧеловека))].sort();
+}
+
+function статьиУчреждения(){
+  return [...new Set((POP.люди || []).map(p => p.article))]
+    .sort((a, b) => a.localeCompare(b, 'ru', { numeric: true }));
+}
+
+function видыЗапроса(){
+  return [...new Set(ЗАЯВЛЕНИЯ.map(z => z.want))];
+}
+
+function выборИз(id, варианты, текущее){
+  const есть = варианты.includes(текущее);
+  return `<select id="${id}">
+    ${есть ? '' : `<option value="${esc(текущее)}" selected>${esc(текущее)} — как в заявлении</option>`}
+    ${варианты.map(в => `<option value="${esc(в)}" ${в === текущее ? 'selected' : ''}>${esc(в)}</option>`).join('')}
+  </select>`;
+}
+
+function регВид(кнопка, значение){
+  [...кнопка.parentNode.children].forEach(б => б.classList.remove('on'));
+  кнопка.classList.add('on');
+  const поле = document.getElementById('regWant');
+  if (поле) поле.value = значение;
+}
+
+function регНайти(){
+  const блок = document.getElementById('regНайдено'); if (!блок) return;
+  const поле = document.getElementById('regName');
+  const q = ((поле && поле.value) || '').trim().toLowerCase();
+  if (q.length < 3) {
+    блок.innerHTML = '<span class="muted">Наберите хотя бы три буквы фамилии.</span>';
+    return;
+  }
+  const найдено = (POP.люди || []).filter(p => p.name.toLowerCase().includes(q)).slice(0, 6);
+  блок.innerHTML = найдено.length
+    ? найдено.map(p => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="регВзять('${p.id}')">
+        ${esc(p.name)} · ${esc(местоЧеловека(p))} · ${esc(p.dob)}${p.confirmed ? '' : ' · личность не подтверждена'}
+      </button>`).join('')
+    : '<span class="muted">В картотеке такого нет. Значит, вносим нового человека — заполните поля руками.</span>';
+}
+
+function регВзять(pid){
+  const p = POP.поId[pid]; if (!p) return;
+  const уст = (id, знач) => { const e = document.getElementById(id); if (e) e.value = знач; };
+  уст('regName', p.name);
+  уст('regDob', p.dob);
+  уст('regUnit', местоЧеловека(p));
+  уст('regArt', p.article);
+  const блок = document.getElementById('regНайдено');
+  if (блок) блок.innerHTML = `<span class="chip g">выбран</span> ${esc(p.name)} — поля заполнены из картотеки.`;
+}
+
+function сохранитьЗаявление(id){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  const поле = k => { const e = document.getElementById(k); return e ? e.value.trim() : ''; };
+  z.person = поле('regName') || z.person;
+  z.dob = поле('regDob') || z.dob;
+  z.unit = поле('regUnit') || z.unit;
+  z.article = поле('regArt') || z.article;
+  z.contact = поле('regContact') || z.contact;
+  z.phone = поле('regPhone') || z.phone;
+  z.want = поле('regWant') || z.want;
+  завершитьЗаявление(z, 'подтверждено');
+}
+
+function подтвердитьЛичность(id){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  завершитьЗаявление(z, 'подтверждено');
+}
+
+function отклонитьЗаявление(id){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  завершитьЗаявление(z, 'отклонено');
+}
+
+function завершитьЗаявление(z, статус){
+  z.status = статус;
+  z.by = профиль().name.split(' ')[0] + ' ' + профиль().name.split(' ').slice(1).map(w => w[0] + '.').join('');
+  const p = POP.поId[z.pid];
+  if (p && статус === 'подтверждено') p.confirmed = true;
+  closeModal(); render();
+  toast(статус === 'подтверждено'
+    ? z.person + ' — личность подтверждена. Доступны звонки и сообщения.'
+    : z.person + ' — заявление отклонено. Остаётся только текстовая переписка.');
+}
+
+/* ---------- сторона цензора ---------- */
+
+/* Письмо пришло на человека, которого нет в базе или он не подтверждён. */
+function адресатНеПодтверждён(x){
+  return !!x.toUnknown || толькоТекст(x.pid);
+}
+
+function внестиАдресата(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const p = POP.поId[x.pid];
+  /* toUnknown — фамилия, которую отправитель написал на конверте,
+     а в картотеке её нет. Тогда вносить некого: письмо отклоняется. */
+  const адресат = x.toUnknown || (x.dir === 'Входящее' ? x.to : x.from);
+  const числится = !x.toUnknown && !!p;
+
+  modal(`
+    <div class="mh"><div><h3>Адресат письма</h3>
+      <div class="top-sub">${esc(x.id)} · ${esc(x.from)} → ${esc(x.to)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note ${числится ? '' : 'warn'}" style="margin-top:0">
+        ${числится
+          ? `<b>Такой человек в картотеке учреждения числится,</b> но его личность
+             не подтверждена оперативным сотрудником. Письмо вы можете обработать как обычно:
+             текстовая переписка доступна и без подтверждения.`
+          : `<b>Такой человек в картотеке учреждения не числится.</b>
+             Письмо следует отклонить с отметкой «адресат не числится» и вернуть отправителю.`}
+      </div>
+
+      <div class="kv">
+        <div class="k">Указан получателем</div><div>${esc(адресат)}</div>
+        <div class="k">В картотеке</div>
+        <div>${числится ? `<span class="chip g">числится</span> ${esc(p.name)}, ${esc(местоЧеловека(p))}`
+          : '<span class="chip r">не числится</span>'}</div>
+        <div class="k">Личность подтверждена</div>
+        <div>${p && p.confirmed ? '<span class="chip g">да</span>' : '<span class="chip o">нет</span>'}</div>
+      </div>
+
+      ${числится ? `<div class="note">Если вы вносите его в систему, сведения уйдут оперативному
+        сотруднику на подтверждение личности. Это не срочно: до подтверждения человеку
+        доступна только текстовая переписка.</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      ${числится
+        ? `<button class="btn primary" onclick="передатьНаПодтверждение('${x.id}')">Внести и передать оперу</button>`
+        : `<button class="btn danger" onclick="отклонитьПоАдресату('${x.id}')">Отклонить: адресат не числится</button>`}
+    </div>`);
+}
+
+function передатьНаПодтверждение(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  const p = POP.поId[x.pid];
+  if (!p) return;
+  if (!ЗАЯВЛЕНИЯ.some(z => z.pid === p.id && (z.status === 'новое' || z.status === 'на подтверждении'))) {
+    ЗАЯВЛЕНИЯ.unshift({
+      id: 'З-' + (4400 + Math.floor(Math.random() * 99)),
+      pid: p.id, person: p.name, dob: p.dob, unit: p.unit, article: p.article,
+      source: 'цензор', want: 'подтверждение личности',
+      contact: x.from, phone: '', at: '28.09.2026', daysAgo: 0,
+      status: 'на подтверждении', by: null, letter: x.id, scan: false,
+    });
+  }
+  closeModal(); render();
+  toast('Передано оперативному сотруднику на подтверждение. Письмо обрабатывайте как обычно.');
+}
+
+function отклонитьПоАдресату(id){
+  const x = S.queue.find(m => m.id === id); if (!x) return;
+  x.status = 'denied';
+  S.log.unshift({
+    id: x.id, from: x.from, to: x.to, decision: 'deny',
+    basis: 'адресат не числится в картотеке учреждения; отправление возвращается отправителю',
+    by: профиль().name + ', цензор', at: nowStamp(), group: 1, act: String(++ACT_NO),
+  });
+  closeModal(); render();
+  toast('Отклонено: адресат не числится. Отправление возвращается отправителю.');
+}
+
+/* ================== ДОКУМЕНТООБОРОТ НАЧАЛЬНИКА ==================
+
+   Четыре вещи в одном месте: документы на подпись, поручения,
+   обращения и исполняющий обязанности. Смысл каждой описан
+   в data/head.js — здесь только экраны.
+
+   Общее правило отработки: достаточно отметки «выполнено».
+   Ни вложений, ни отчётов, ни подтверждений. Как только отметку
+   становится ставить долго, её перестают ставить вовремя,
+   и журнал расходится с тем, что происходит на самом деле.
+*/
+
+/* Двузначное число: 5 → «05». В прототипе своего такого помощника нет. */
+const дв = n => String(n).padStart(2, '0');
+
+const СЕГОДНЯ_ПРОТ = new Date(2026, 8, 28);
+
+const ДОКУМЕНТЫ = (ROL.documents || []).map(д => ({ ...д }));
+const ОБРАЩЕНИЯ = (ROL.appeals2 || []).map(о => ({ ...о }));
+const ПОРУЧЕНИЯ = (ROL.orders || []).map(п => ({ ...п }));
+const ПРОИЗВОДНЫЕ = [];
+
+let НОМЕР_ПОРУЧЕНИЯ = ПОРУЧЕНИЯ.reduce(
+  (м, п) => Math.max(м, Number(String(п.id).replace(/\D/g, '')) || 0), 420);
+
+/* ---------- документы на подпись ---------- */
+
+function ждутПодписи(){ return ДОКУМЕНТЫ.filter(д => д.status === 'waiting'); }
+function подписанныеДок(){ return ДОКУМЕНТЫ.filter(д => д.status === 'signed'); }
+function документовЖдёт(){ return ждутПодписи().length; }
+
+function видыДокументовВСписке(){
+  return [...new Set(ДОКУМЕНТЫ.map(д => д.kind))];
+}
+
+/* Бланк документа. Реквизиты — по ГОСТ Р 7.0.97-2016: наименование
+   организации, вид документа, дата и номер, место составления,
+   заголовок к тексту, текст, подпись. */
+function бланкВходящего(д){
+  const ф = У();
+  const строка = (к, з) => `<div class="бл-к">${esc(к)}</div><div class="бл-з">${esc(з)}</div>`;
+  return `
+  <div class="бланк последний">
+    <div class="бл-верх">
+      <div class="бл-орг">
+        ФЕДЕРАЛЬНАЯ СЛУЖБА ИСПОЛНЕНИЯ НАКАЗАНИЙ<br>
+        ${esc(ф.parent || '')}<br>
+        ${esc(ф.full || '')}<br>
+        (${esc(ф.short || '')})
+      </div>
+    </div>
+
+    <div class="бл-вид">${esc(д.kind.toUpperCase())}</div>
+
+    <div class="бл-рек">
+      <span>${esc(д.at)}</span>
+      <span>№ ${esc(д.id)}</span>
+    </div>
+    <div class="бл-место">${esc(ф.city || '')}</div>
+
+    <div class="бл-загол">${esc(д.gist)}</div>
+
+    <div class="бл-свед">
+      ${строка('Основание', д.norm)}
+      ${строка('Подготовил', д.by)}
+      ${строка('Поступил', д.at)}
+      ${строка('Срок рассмотрения', д.dueDays + ' ' + plural(д.dueDays, 'день', 'дня', 'дней'))}
+      ${д.person ? строка(Т('человек').charAt(0).toUpperCase() + Т('человек').slice(1), д.person) : ''}
+      ${д.person ? строка(S.facility === 'сизо' ? 'Камера' : 'Отряд', д.unit) : ''}
+    </div>
+
+    <p class="бл-абз">${esc(д.gist)}</p>
+
+    <div class="бл-подписи">
+      <div class="бл-подпись">
+        <span class="бл-кто">Начальник ${esc(ф.short || '')}</span>
+        <span class="бл-линия"></span>
+        <span class="бл-имя">${esc(инициалы(ПОДПИСАНТ.name))}</span>
+      </div>
+      <div class="бл-дата">«____» ____________ 2026 г.</div>
+    </div>
+  </div>`;
+}
+
+function открытьДокумент(id){
+  const д = ДОКУМЕНТЫ.find(x => x.id === id); if (!д) return;
+  modal(`
+    <div class="mh"><div><h3>${esc(д.kind)}</h3>
+      <div class="top-sub">${esc(д.id)} · ${esc(д.at)} · от ${esc(д.from)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${д.overdue ? `<div class="note warn" style="margin-top:0"><b>Срок вышел.</b>
+        Документ лежит ${д.daysWaiting} ${plural(д.daysWaiting, 'день', 'дня', 'дней')},
+        а рассмотреть его следовало за ${д.dueDays}.</div>` : ''}
+
+      <div class="kv">
+        <div class="k">Существо</div><div>${esc(д.gist)}</div>
+        <div class="k">Основание</div><div>${esc(д.norm)}</div>
+        <div class="k">Подготовил</div><div>${esc(д.by)}</div>
+        ${д.person ? `<div class="k">${S.facility === 'сизо' ? 'Подозреваемый' : 'Осуждённый'}</div>
+          <div>${esc(д.person)}, ${esc(д.unit)}</div>` : ''}
+        <div class="k">Срок</div>
+        <div>${д.dueDays} ${plural(д.dueDays, 'день', 'дня', 'дней')} ·
+          лежит ${д.daysWaiting}</div>
+      </div>
+
+      ${д.derives ? `<div class="note"><b>После подписания система сформирует:</b>
+        ${esc(д.derives)}. Отдельно составлять его не нужно — он собирается
+        из этого же документа и попадёт в «Подписанные» вместе с ним.</div>` : ''}
+
+      ${бланкВходящего(д)}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn" onclick="doPrint()">${ICON.printer} Печать</button>
+      <button class="btn" onclick="перепоручитьИз('${д.id}', '${esc(д.kind)}')">Перепоручить</button>
+      ${д.status === 'waiting'
+        ? `<button class="btn primary" onclick="подписатьДокумент('${д.id}')">Подписать</button>`
+        : '<span class="chip g">подписан</span>'}
+    </div>`);
+}
+
+/* Подписание порождает производный документ, если он у вида предусмотрен. */
+function подписатьДокумент(id, тихо){
+  const д = ДОКУМЕНТЫ.find(x => x.id === id); if (!д || д.status !== 'waiting') return;
+  д.status = 'signed';
+  д.signedAt = '28.09.2026';
+  if (д.derives) {
+    ПРОИЗВОДНЫЕ.push({
+      id: 'П-' + (7100 + ПРОИЗВОДНЫЕ.length),
+      kind: д.derives, basis: д.id, at: '28.09.2026', person: д.person, unit: д.unit,
+    });
+    д.derived = true;
+  }
+  if (!тихо) {
+    closeModal();
+    toast(д.derives ? `Подписано. Сформирован документ: ${д.derives}.` : 'Подписано.');
+    render();
+  }
+}
+
+function печатьОдного(id){
+  const д = ДОКУМЕНТЫ.find(x => x.id === id); if (!д) return;
+  печатьДокумента(бланкВходящего(д));
+}
+
+function печатьПроизводного(id){
+  const п = ПРОИЗВОДНЫЕ.find(x => x.id === id); if (!п) return;
+  const ф = У();
+  печатьДокумента(`
+    <div class="бланк последний">
+      <div class="бл-верх"><div class="бл-орг">
+        ФЕДЕРАЛЬНАЯ СЛУЖБА ИСПОЛНЕНИЯ НАКАЗАНИЙ<br>
+        ${esc(ф.parent || '')}<br>${esc(ф.full || '')}<br>(${esc(ф.short || '')})
+      </div></div>
+      <div class="бл-вид">${esc(п.kind.toUpperCase())}</div>
+      <div class="бл-рек"><span>${esc(п.at)}</span><span>№ ${esc(п.id)}</span></div>
+      <div class="бл-место">${esc(ф.city || '')}</div>
+      <div class="бл-загол">составлен на основании документа № ${esc(п.basis)}</div>
+      ${п.person ? `<div class="бл-свед">
+        <div class="бл-к">Касается</div><div class="бл-з">${esc(п.person)}, ${esc(п.unit)}</div>
+      </div>` : ''}
+      <div class="бл-подписи">
+        <div class="бл-подпись">
+          <span class="бл-кто">Начальник ${esc(ф.short || '')}</span>
+          <span class="бл-линия"></span>
+          <span class="бл-имя">${esc(инициалы(ПОДПИСАНТ.name))}</span>
+        </div>
+        <div class="бл-дата">«____» ____________ 2026 г.</div>
+      </div>
+    </div>`);
+}
+
+/* ---------- один экран на всю подпись ----------
+
+   Акты о недопуске приходят от цензора со своей формой по ГОСТ и своим
+   реестром — они остаются отдельным списком. Всё остальное, что идёт
+   по внутреннему документообороту, лежит рядом. Групповое действие
+   одно и то же: подписать всё либо распечатать и подписать всё.
+*/
+
+function актыЖдут(){ return АКТЫ.filter(a => a.status === 'waiting'); }
+
+function наПодписьВсего(){ return актыЖдут().length + ждутПодписи().length; }
+
+function бланкиВсего(){
+  const акты = актыЖдут();
+  const доки = ждутПодписи();
+  return акты.map((a, i) => бланкАкта(актИзОчереди(a), false)).join('')
+       + доки.map(д => бланкВходящего(д)).join('');
+}
+
+function печатьВсегоНаПодпись(){
+  if (!наПодписьВсего()) { toast('Печатать нечего'); return; }
+  печатьДокумента(бланкиВсего());
+}
+
+/* Подписать всё: и акты, и прочие документы. Сначала показываем, что именно
+   уходит под подпись — подпись удостоверяет основание по каждому документу. */
+function подписатьВсёНаПодпись(печатать){
+  const акты = актыЖдут();
+  const доки = ждутПодписи();
+  if (!акты.length && !доки.length) { toast('Неподписанных документов нет'); return; }
+  const производных = доки.filter(д => д.derives).length;
+  modal(`
+    <div class="mh"><div><h3>${печатать ? 'Распечатать и подписать' : 'Подписать'}
+      ${наПодписьВсего()} ${plural(наПодписьВсего(), 'документ', 'документа', 'документов')}</h3>
+      <div class="top-sub">Подписант: ${esc(ПОДПИСАНТ.name)}, ${esc(ПОДПИСАНТ.post)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn" style="margin-top:0"><b>Подпись удостоверяет основание
+        по каждому документу.</b> Если хотя бы один вызывает сомнение — подписывайте поштучно.</div>
+
+      ${акты.length ? `<div class="бл-подзаг">Акты о недопуске · ${акты.length}</div>
+        <ul class="plain warn-list">
+          ${акты.map(a => `<li><b>${esc(a.id)}</b> · ${esc(a.person)} — ${esc(a.ground)}</li>`).join('')}
+        </ul>` : ''}
+
+      ${доки.length ? `<div class="бл-подзаг">Прочие документы · ${доки.length}</div>
+        <ul class="plain warn-list">
+          ${доки.map(д => `<li><b>${esc(д.id)}</b> · ${esc(д.kind)}${
+            д.person ? ' — ' + esc(д.person) : ''}</li>`).join('')}
+        </ul>` : ''}
+
+      ${производных ? `<div class="note">После подписания система сформирует
+        ${производных} ${plural(производных, 'производный документ', 'производных документа', 'производных документов')}:
+        ${доки.filter(д => д.derives).map(д => esc(д.derives)).join('; ')}.</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="подтвердитьПодписьВсего(${печатать ? 'true' : 'false'})">
+        ${печатать ? 'Распечатать и подписать' : 'Подписать всё'}</button>
+    </div>`);
+}
+
+function подтвердитьПодписьВсего(печатать){
+  const html = печатать ? бланкиВсего() : '';
+  const акты = актыЖдут();
+  const доки = ждутПодписи();
+  акты.forEach(a => { a.status = 'signed'; });
+  доки.forEach(д => подписатьДокумент(д.id, true));
+  const производных = ПРОИЗВОДНЫЕ.length;
+  closeModal();
+  if (печатать) {
+    печатьДокумента(html);
+  } else {
+    toast(`Подписано: ${акты.length + доки.length}` +
+      (производных ? `. Сформировано производных: ${производных}.` : '.'));
+  }
+  render();
+}
+
+function renderSigning(){
+  const акты = актыЖдут();
+  const актыРешённые = АКТЫ.filter(a => a.status !== 'waiting');
+  const доки = ждутПодписи();
+  const подписано = подписанныеДок();
+  const просроченоАктов = акты.filter(a => a.overdue).length;
+  const просроченоДоков = доки.filter(д => д.overdue).length;
+  const вид = S.видДокумента || 'all';
+  const показДоков = вид === 'all' ? доки : доки.filter(д => д.kind === вид);
+
+  const актКарточка = a => `
+    <div class="row">
+      <div class="stripe ${a.overdue ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(a.person)}</div>
+        <div class="meta">${esc(a.unit)} · ${esc(a.dir)} ${esc(a.channel)} · ${esc(a.counterpart)}</div>
+        <div class="marks">
+          <span class="chip">${esc(a.id)}</span>
+          <span class="chip ${a.overdue ? 'r' : 'o'}">${esc(a.due)}</span>
+          <span class="chip">подготовила ${esc(a.by)}</span>
+        </div>
+      </div>
+      <div>
+        <div class="sum">${esc(a.ground)}</div>
+        <div class="why">${esc(a.norm)}</div>
+      </div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button>
+        <button class="btn sm" onclick="печатьАктаОчереди('${a.id}')">Печать</button>
+        <button class="btn sm primary" onclick="подписатьАкт('${a.id}')">Подписать</button>
+      </div>
+    </div>`;
+
+  const актРешённый = a => `
+    <div class="row">
+      <div class="stripe ${a.status === 'signed' ? 'g' : 'o'}"></div>
+      <div><div class="who">${esc(a.person)}</div>
+        <div class="meta">${esc(a.id)} · ${esc(a.ground)}</div></div>
+      <div><div class="sum">${a.status === 'signed' ? 'Подписан' : 'Возвращён на доработку'}</div>
+        ${a.note ? `<div class="why">${esc(a.note)}</div>` : ''}</div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьАкт('${a.id}')">Прочитать</button>
+        <button class="btn sm" onclick="печатьАктаОчереди('${a.id}')">Печать</button>
+      </div>
+    </div>`;
+
+  const докКарточка = д => `
+    <div class="row">
+      <div class="stripe ${д.overdue ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(д.kind)}</div>
+        <div class="meta">${esc(д.from)}${д.person ? ' · ' + esc(д.person) + ', ' + esc(д.unit) : ''}</div>
+        <div class="marks">
+          <span class="chip">${esc(д.id)}</span>
+          <span class="chip ${д.overdue ? 'r' : 'o'}">${д.overdue
+            ? 'срок вышел, лежит ' + д.daysWaiting + ' ' + plural(д.daysWaiting, 'день', 'дня', 'дней')
+            : 'срок ' + д.dueDays + ' ' + plural(д.dueDays, 'день', 'дня', 'дней')}</span>
+          ${д.derives ? `<span class="chip" title="Система сформирует его сама после подписания">→ ${esc(д.derives)}</span>` : ''}
+        </div>
+      </div>
+      <div>
+        <div class="sum">${esc(д.gist)}</div>
+        <div class="why">${esc(д.norm)} · подготовил ${esc(д.by)}</div>
+      </div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьДокумент('${д.id}')">Прочитать</button>
+        <button class="btn sm" onclick="печатьОдного('${д.id}')">Печать</button>
+        <button class="btn sm primary" onclick="подписатьДокумент('${д.id}')">Подписать</button>
+      </div>
+    </div>`;
+
+  const докПодписанный = д => `
+    <div class="row">
+      <div class="stripe g"></div>
+      <div><div class="who">${esc(д.kind)}</div>
+        <div class="meta">${esc(д.id)}${д.person ? ' · ' + esc(д.person) : ''}</div></div>
+      <div><div class="sum">Подписан</div>
+        ${д.derived ? `<div class="why">сформирован производный: ${esc(д.derives)}</div>` : ''}</div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьДокумент('${д.id}')">Прочитать</button>
+        <button class="btn sm" onclick="печатьОдного('${д.id}')">Печать</button>
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    ${блокИО()}
+
+    <div class="page-head head-row">
+      <div><h1>Документы на подпись</h1>
+        <p>Всё, что пришло по внутреннему документообороту: акты о недопуске от цензора
+           и остальные документы. Часть из них порождает следующий документ —
+           его система соберёт сама.</p></div>
+      ${наПодписьВсего() ? `<div class="head-acts">
+        <button class="btn" onclick="печатьВсегоНаПодпись()">${ICON.printer} Распечатать все</button>
+        <button class="btn" onclick="подписатьВсёНаПодпись(true)">Распечатать и подписать все</button>
+        <button class="btn primary" onclick="подписатьВсёНаПодпись(false)">${ICON.check} Подписать все</button>
+      </div>` : ''}
+    </div>
+
+    ${просроченоАктов || просроченоДоков ? `<div class="note warn">
+      <b>Срок вышел: ${текстПросрочки(просроченоАктов, просроченоДоков)}.</b>
+      Пока акт не подписан, недопуск документально не оформлен: материал задержан,
+      а основания на бумаге нет. Это первое, что смотрят при проверке.</div>` : ''}
+
+    <h2 class="sect">Акты о недопуске · ${акты.length}</h2>
+    ${акты.length
+      ? `<div class="rows">${акты.map(актКарточка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Неподписанных актов нет</b>
+         <div>Решение о недопуске принимает цензор, подпись — ваша.</div></div>`}
+
+    <h2 class="sect">Прочие документы · ${доки.length}</h2>
+    ${доки.length ? `
+      <div class="bar">
+        <span class="lab">Вид:</span>
+        <div class="seg">
+          <button class="${вид === 'all' ? 'on' : ''}" onclick="S.видДокумента='all'; render()">Все · ${доки.length}</button>
+          ${видыДокументовВСписке().map(к => {
+            const n = доки.filter(д => д.kind === к).length;
+            return n ? `<button class="${вид === к ? 'on' : ''}" onclick="S.видДокумента='${esc(к)}'; render()">${esc(к)} · ${n}</button>` : '';
+          }).join('')}
+        </div>
+      </div>
+      <div class="rows">${показДоков.map(докКарточка).join('')}</div>`
+      : `<div class="empty"><b>Документов на подпись нет</b></div>`}
+
+    ${ПРОИЗВОДНЫЕ.length ? `
+      <h2 class="sect">Сформировано автоматически · ${ПРОИЗВОДНЫЕ.length}</h2>
+      <div class="note">Собраны из подписанных вами документов: составлять их отдельно не нужно.</div>
+      <div class="rows">${ПРОИЗВОДНЫЕ.map(п => `
+        <div class="row">
+          <div class="stripe g"></div>
+          <div><div class="who">${esc(п.kind)}</div>
+            <div class="meta">${esc(п.id)} · на основании ${esc(п.basis)}${п.person ? ' · ' + esc(п.person) : ''}</div></div>
+          <div><div class="sum">Готов</div><div class="why">остаётся распечатать</div></div>
+          <div class="acts"><button class="btn sm" onclick="печатьПроизводного('${п.id}')">Печать</button></div>
+        </div>`).join('')}</div>` : ''}
+
+    ${подписано.length ? `<h2 class="sect">Подписанные документы · ${подписано.length}</h2>
+      <div class="rows">${подписано.map(докПодписанный).join('')}</div>` : ''}
+
+    ${актыРешённые.length ? `<h2 class="sect">Рассмотренные акты · ${актыРешённые.length}</h2>
+      <div class="rows">${актыРешённые.map(актРешённый).join('')}</div>` : ''}
+  `;
+}
+
+function текстПросрочки(а, д){
+  const ч = [];
+  if (а) ч.push(а + ' ' + plural(а, 'акт', 'акта', 'актов'));
+  if (д) ч.push(д + ' ' + plural(д, 'документ', 'документа', 'документов'));
+  return ч.join(' и ');
+}
+
+/* ---------- поручения ---------- */
+
+function поручениеОткрыто(п){ return п.status === 'открыто'; }
+function поручVыданныхОткрыто(){ return ПОРУЧЕНИЯ.filter(поручениеОткрыто).length; }
+
+function новоеПоручение(основание, тема){
+  S.порОснование = основание || null;
+  S.порТекст = тема || '';
+  S.порКому = (ROL.orderTargets || [])[0] || '';
+  показатьФормуПоручения();
+}
+
+function показатьФормуПоручения(){
+  const шаблоны = ROL.orderTemplates || [];
+  const кому = ROL.orderTargets || [];
+  const срок = new Date(2026, 8, 30);
+  const iso = срок.getFullYear() + '-' + дв(срок.getMonth() + 1) + '-' + дв(срок.getDate());
+
+  modal(`
+    <div class="mh"><div><h3>Новое поручение</h3>
+      <div class="top-sub">№ ПОР-${НОМЕР_ПОРУЧЕНИЯ + 1} · от 28.09.2026${
+        S.порОснование ? ' · по документу ' + esc(S.порОснование) : ''}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${S.порОснование ? `<div class="note" style="margin-top:0">
+        Поручение по <b>${esc(S.порОснование)}</b>. Исполнитель увидит и само поручение,
+        и документ, из которого оно возникло.</div>` : ''}
+
+      <label class="fld">Что поручается</label>
+      <div class="seg сборный" style="margin-bottom:10px">
+        ${шаблоны.map(т => `<button class="${т === S.порТекст ? 'on' : ''}"
+          onclick="порТема(this, '${esc(т)}')">${esc(т)}</button>`).join('')}
+      </div>
+      <label class="fld">Или своими словами<input id="порТекст" value="${esc(S.порТекст)}"
+        placeholder="Текст поручения"></label>
+
+      <label class="fld">Кому</label>
+      <div class="seg" style="margin-bottom:14px">
+        ${кому.map(к => `<button class="${к === S.порКому ? 'on' : ''}"
+          onclick="порКому(this, '${esc(к)}')">${esc(к)}</button>`).join('')}
+      </div>
+
+      <label class="fld">Срок исполнения<input type="date" id="порСрок" value="${iso}"></label>
+
+      <div class="note">Отработка простая: исполнитель нажимает «Выполнено».
+        Ни вложений, ни отчёта прикладывать не требуется.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьПоручение()">Поставить поручение</button>
+    </div>`);
+}
+
+/* Выбор типового поручения сразу подставляет обычного исполнителя:
+   начальнику остаётся только переназначить, если случай не обычный. */
+function порТема(кнопка, текст){
+  [...кнопка.parentNode.children].forEach(б => б.classList.remove('on'));
+  кнопка.classList.add('on');
+  S.порТекст = текст;
+  const поле = document.getElementById('порТекст');
+  if (поле) поле.value = текст;
+  const кто = (ROL.orderWho || {})[текст];
+  if (кто) {
+    S.порКому = кто;
+    const ряд = кнопка.parentNode.parentNode.querySelectorAll('.seg')[1]
+      || document.querySelectorAll('.modal .seg')[1];
+    if (ряд) [...ряд.children].forEach(б =>
+      б.classList.toggle('on', б.textContent.trim() === кто));
+  }
+}
+
+function порКому(кнопка, кому){
+  [...кнопка.parentNode.children].forEach(б => б.classList.remove('on'));
+  кнопка.classList.add('on');
+  S.порКому = кому;
+}
+
+function сохранитьПоручение(){
+  const текст = (document.getElementById('порТекст') || {}).value || S.порТекст;
+  if (!String(текст).trim()) { toast('Не указано, что поручается'); return; }
+  const сырая = (document.getElementById('порСрок') || {}).value || '';
+  const ч = сырая.split('-');
+  ПОРУЧЕНИЯ.unshift({
+    id: 'ПОР-' + (++НОМЕР_ПОРУЧЕНИЯ),
+    title: String(текст).trim(),
+    basis: S.порОснование || null,
+    to: S.порКому,
+    due: ч.length === 3 ? `${ч[2]}.${ч[1]}.${ч[0]}` : '30.09.2026',
+    overdue: false,
+    status: 'открыто',
+    by: 'Начальник учреждения',
+    at: '28.09.2026',
+    свежее: true,
+  });
+  S.порОснование = null; S.порТекст = '';
+  closeModal();
+  toast('Поручение поставлено');
+  S.вкладкаПоручений = 'issued';
+  go('orders');
+}
+
+function перепоручитьИз(номер, тема){
+  новоеПоручение(номер, тема ? 'Отработать: ' + тема : '');
+}
+
+function выполнитьПоручение(id){
+  const п = ПОРУЧЕНИЯ.find(x => x.id === id); if (!п) return;
+  п.status = 'выполнено'; п.overdue = false; п.doneAt = '28.09.2026';
+  toast('Отмечено выполненным');
+  render();
+}
+
+function выполнитьМоё(id){
+  const п = (REF.assignments || []).find(x => x.id === id); if (!п) return;
+  п.status = 'done';
+  toast('Отмечено выполненным');
+  render();
+}
+
+function renderOrders(){
+  const вкладка = S.вкладкаПоручений || 'issued';
+  const выданные = ПОРУЧЕНИЯ;
+  const мои = REF.assignments || [];
+  const открытыхВыданных = выданные.filter(поручениеОткрыто).length;
+  const открытыхМоих = мои.filter(x => x.status === 'open').length;
+
+  const выданное = п => `
+    <div class="row">
+      <div class="stripe ${п.status === 'выполнено' ? 'g' : п.overdue ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(п.title)}</div>
+        <div class="meta">${esc(п.to)}</div>
+        <div class="marks">
+          <span class="chip">${esc(п.id)}</span>
+          <span class="chip ${п.overdue ? 'r' : ''}">срок ${esc(п.due)}</span>
+          ${п.basis ? `<span class="chip" title="Перепоручено: возникло из этого документа или обращения">по ${esc(п.basis)}</span>` : '<span class="chip">в свободной форме</span>'}
+          ${п.свежее ? '<span class="chip g">только что</span>' : ''}
+        </div>
+      </div>
+      <div><div class="sum">${п.status === 'выполнено' ? 'Выполнено' : п.overdue ? 'Просрочено' : 'В работе'}</div>
+        <div class="why">поставлено ${esc(п.at)}</div></div>
+      <div class="acts">
+        ${п.status === 'выполнено'
+          ? '<span class="chip g">закрыто</span>'
+          : `<button class="btn sm primary" onclick="выполнитьПоручение('${п.id}')">Выполнено</button>`}
+      </div>
+    </div>`;
+
+  const моё = п => `
+    <div class="row">
+      <div class="stripe ${п.status === 'done' ? 'g' : п.urgent ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(п.title)}</div>
+        <div class="meta">от ${esc(п.from)}</div>
+        <div class="marks">
+          <span class="chip">${esc(п.id)}</span>
+          <span class="chip ${п.urgent ? 'r' : ''}">${esc(п.due)}</span>
+        </div>
+      </div>
+      <div><div class="sum">${п.status === 'done' ? 'Выполнено' : 'В работе'}</div>
+        ${п.note ? `<div class="why">${esc(п.note)}</div>` : ''}</div>
+      <div class="acts">
+        ${п.status === 'done'
+          ? '<span class="chip g">закрыто</span>'
+          : `<button class="btn sm" onclick="перепоручитьИз('${п.id}', '${esc(п.title)}')">Перепоручить</button>
+             <button class="btn sm primary" onclick="выполнитьМоё('${п.id}')">Выполнено</button>`}
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    ${блокИО()}
+
+    <div class="page-head head-row">
+      <div><h1>Поручения</h1>
+        <p>Выданные подчинённым и полученные вами. Поручение ставится в свободной форме
+           либо перепоручением того, что пришло.</p></div>
+      <div class="head-acts">
+        <button class="btn primary" onclick="новоеПоручение()">Новое поручение</button>
+      </div>
+    </div>
+
+    <div class="bar">
+      <div class="seg">
+        <button class="${вкладка === 'issued' ? 'on' : ''}" onclick="S.вкладкаПоручений='issued'; render()">Выданные · ${открытыхВыданных}</button>
+        <button class="${вкладка === 'mine' ? 'on' : ''}" onclick="S.вкладкаПоручений='mine'; render()">Мне · ${открытыхМоих}</button>
+      </div>
+    </div>
+
+    ${вкладка === 'issued' ? `
+      ${выданные.length
+        ? `<div class="rows">${выданные.map(выданное).join('')}</div>`
+        : `<div class="empty"><b>Поручений не выдано</b><div>Поставьте первое.</div></div>`}
+    ` : `
+      <div class="note">Сюда попадает и то, что вернули вам: перепоручённое подчинённым
+        обращение, по которому решение всё равно за вами.</div>
+      ${мои.length
+        ? `<div class="rows">${мои.map(моё).join('')}</div>`
+        : `<div class="empty"><b>Поручений вам нет</b></div>`}
+    `}
+  `;
+}
+
+/* ---------- обращения заключённых и родственников ---------- */
+
+function электронныеВключены(){
+  return S.электронныеОбращения !== false;
+}
+
+function обращенияВходящие(){
+  return ОБРАЩЕНИЯ.filter(о => о.status !== 'выполнено'
+    && (о.electronic ? электронныеВключены() : true));
+}
+
+function обращенийЖдёт(){ return обращенияВходящие().length; }
+
+function переключитьЭлектронные(){
+  const было = электронныеВключены();
+  S.электронныеОбращения = !было;
+  toast(было
+    ? 'Электронный приём обращений отключён. Бумажные принимаются как обычно.'
+    : 'Электронный приём обращений включён.');
+  render();
+}
+
+function выполнитьОбращение(id){
+  const о = ОБРАЩЕНИЯ.find(x => x.id === id); if (!о) return;
+  о.status = 'выполнено'; о.doneBy = 'лично'; о.overdue = false;
+  toast('Отмечено выполненным');
+  render();
+}
+
+function открытьОбращение(id){
+  const о = ОБРАЩЕНИЯ.find(x => x.id === id); if (!о) return;
+  const путь = (ROL.appealPaths || []).find(п => п.путь === о.source);
+  modal(`
+    <div class="mh"><div><h3>Обращение</h3>
+      <div class="top-sub">${esc(о.id)} · ${esc(о.at)} · ${esc(о.source)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">Тема</div><div>${esc(о.topic)}</div>
+        <div class="k">Заявитель</div>
+        <div>${esc(о.applicant)} ${о.fromRelative
+          ? '<span class="chip">родственник</span>'
+          : `<span class="chip">${esc(Т('человек'))}</span>`}</div>
+        ${о.fromRelative ? `<div class="k">Касается</div><div>${esc(о.person)}, ${esc(о.unit)}</div>` : ''}
+        <div class="k">Как поступило</div><div>${esc(о.source)}</div>
+        <div class="k">Срок</div>
+        <div>${о.deadlineDays > 0
+          ? 'осталось ' + о.deadlineDays + ' ' + plural(о.deadlineDays, 'день', 'дня', 'дней') + ' из 30'
+          : '<span class="chip r">срок вышел</span>'}</div>
+        ${о.assignedTo ? `<div class="k">Поручено</div><div>${esc(о.assignedTo)}</div>` : ''}
+      </div>
+
+      ${путь ? `<div class="note">${esc(путь.как)}</div>` : ''}
+
+      <div class="note">Для закрытия достаточно отметки «выполнено».
+        Прикладывать ответ или подтверждения не нужно — ответ уходит заявителю
+        своим порядком, через канцелярию.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn" onclick="перепоручитьИз('${о.id}', '${esc(о.topic)}')">Перепоручить</button>
+      <button class="btn primary" onclick="выполнитьОбращение('${о.id}')">Выполнено</button>
+    </div>`);
+}
+
+function renderAppeals(){
+  const входящие = обращенияВходящие();
+  const новые = входящие.filter(о => о.status === 'новое');
+  const вРаботе = входящие.filter(о => о.status === 'в работе');
+  const закрытые = ОБРАЩЕНИЯ.filter(о => о.status === 'выполнено');
+  const скрытыхЭлектронных = электронныеВключены()
+    ? 0 : ОБРАЩЕНИЯ.filter(о => о.electronic && о.status !== 'выполнено').length;
+
+  const строка = о => `
+    <div class="row">
+      <div class="stripe ${о.deadlineDays <= 0 ? 'r' : о.status === 'новое' ? 'o' : ''}"></div>
+      <div>
+        <div class="who">${esc(о.topic)}</div>
+        <div class="meta">${esc(о.applicant)}${о.fromRelative ? ' · родственник' : ''} · ${esc(о.unit)}</div>
+        <div class="marks">
+          <span class="chip">${esc(о.id)}</span>
+          <span class="chip">${esc(о.source)}</span>
+          ${о.electronic ? '<span class="chip">электронно</span>' : '<span class="chip">бумага</span>'}
+          <span class="chip ${о.deadlineDays <= 0 ? 'r' : ''}">${о.deadlineDays > 0
+            ? 'осталось ' + о.deadlineDays + ' из 30 дн.' : 'срок вышел'}</span>
+          ${о.assignedTo ? `<span class="chip">поручено: ${esc(о.assignedTo)}</span>` : ''}
+        </div>
+      </div>
+      <div><div class="sum">${о.status === 'новое' ? 'Новое' : 'В работе'}</div>
+        <div class="why">поступило ${esc(о.at)}</div></div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьОбращение('${о.id}')">Открыть</button>
+        <button class="btn sm" onclick="перепоручитьИз('${о.id}', '${esc(о.topic)}')">Перепоручить</button>
+        <button class="btn sm primary" onclick="выполнитьОбращение('${о.id}')">Выполнено</button>
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    ${блокИО()}
+
+    <div class="page-head head-row">
+      <div><h1>Обращения</h1>
+        <p>От ${Т('людей')} и их родственников. Четырьмя путями: терминал в отряде,
+           личный кабинет родственника, канцелярия и личный приём.</p></div>
+      <div class="head-acts">
+        <button class="btn ${электронныеВключены() ? '' : 'danger'}" onclick="переключитьЭлектронные()">
+          Электронный приём: ${электронныеВключены() ? 'включён' : 'отключён'}</button>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Отключить можно только электронный приём</b> — терминал и личный кабинет
+      родственника. Право на предложения, заявления и жалобы закреплено
+      в ст. 15 УИК РФ, поэтому бумажное обращение через канцелярию и обращение
+      на личном приёме принимаются всегда, независимо от этой настройки.
+    </div>
+
+    ${скрытыхЭлектронных ? `<div class="note warn"><b>Электронный приём отключён.</b>
+      Не показано обращений: ${скрытыхЭлектронных}. Сроки по ним продолжают идти —
+      отключение канала не останавливает рассмотрение того, что уже поступило.</div>` : ''}
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div>
+        <div class="k">Новые</div><div class="v tnum">${новые.length}</div><div class="d">ещё не смотрели</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.time}</div>
+        <div class="k">В работе</div><div class="v tnum">${вРаботе.length}</div><div class="d">поручено или рассматривается</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Закрыто</div><div class="v tnum">${закрытые.length}</div><div class="d">за три месяца</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.staff}</div>
+        <div class="k">От родственников</div><div class="v tnum">${ОБРАЩЕНИЯ.filter(о => о.fromRelative).length}</div>
+        <div class="d">из ${ОБРАЩЕНИЯ.length} обращений</div></div>
+    </div>
+
+    <h2 class="sect">Новые · ${новые.length}</h2>
+    ${новые.length ? `<div class="rows">${новые.map(строка).join('')}</div>`
+      : '<div class="empty"><b>Новых обращений нет</b></div>'}
+
+    ${вРаботе.length ? `<h2 class="sect">В работе · ${вРаботе.length}</h2>
+      <div class="rows">${вРаботе.map(строка).join('')}</div>` : ''}
+
+    ${закрытые.length ? `<h2 class="sect">Закрыто · ${закрытые.length}</h2>
+      <div class="rows">${закрытые.slice(0, 12).map(о => `
+        <div class="row">
+          <div class="stripe g"></div>
+          <div><div class="who">${esc(о.topic)}</div>
+            <div class="meta">${esc(о.id)} · ${esc(о.applicant)} · ${esc(о.at)}</div></div>
+          <div><div class="sum">Выполнено</div>
+            <div class="why">${esc(о.doneBy === 'лично' ? 'рассмотрено лично' : 'отработал ' + о.doneBy)}</div></div>
+          <div class="acts"><button class="btn sm" onclick="открытьОбращение('${о.id}')">Открыть</button></div>
+        </div>`).join('')}</div>` : ''}
+  `;
+}
+
+/* ---------- исполняющий обязанности ----------
+
+   Назначается на конкретные даты. Пока даты идут, у сотрудника открыт весь
+   функционал начальника. Когда прошли — закрывается сам, без отдельного
+   действия и без напоминания: именно здесь чаще всего забывают снять доступ.
+*/
+
+function иоЗапись(){ return S.ио || null; }
+
+function датаИз(iso){
+  const ч = String(iso || '').split('-');
+  return ч.length === 3 ? new Date(Number(ч[0]), Number(ч[1]) - 1, Number(ч[2])) : null;
+}
+
+function иоАктивен(){
+  const з = иоЗапись(); if (!з) return false;
+  const с = датаИз(з.с), по = датаИз(з.по);
+  if (!с || !по) return false;
+  return СЕГОДНЯ_ПРОТ >= с && СЕГОДНЯ_ПРОТ <= по;
+}
+
+function иоИстёк(){
+  const з = иоЗапись(); if (!з) return false;
+  const по = датаИз(з.по);
+  return !!по && СЕГОДНЯ_ПРОТ > по;
+}
+
+function читаемо(iso){
+  const д = датаИз(iso);
+  return д ? дв(д.getDate()) + '.' + дв(д.getMonth() + 1) + '.' + д.getFullYear() : '—';
+}
+
+function блокИО(){
+  if (S.role !== 'head') return '';
+  const з = иоЗапись();
+  if (!з) return '';
+  if (иоАктивен()) {
+    return `<div class="note warn"><b>Исполняющий обязанности: ${esc(з.кто)}.</b>
+      С ${читаемо(з.с)} по ${читаемо(з.по)}. На эти даты у него открыт весь ваш функционал:
+      подпись документов, поручения и обращения. По истечении срока доступ закроется сам.
+      <button class="btn sm" style="margin-left:10px" onclick="снятьИО()">Снять досрочно</button></div>`;
+  }
+  if (иоИстёк()) {
+    return `<div class="note"><b>Срок исполняющего обязанности истёк ${читаемо(з.по)}.</b>
+      Доступ ${esc(з.кто)} закрыт автоматически.
+      <button class="btn sm" style="margin-left:10px" onclick="открытьИО()">Назначить снова</button></div>`;
+  }
+  return `<div class="note"><b>Исполняющий обязанности назначен: ${esc(з.кто)}.</b>
+    Доступ откроется ${читаемо(з.с)} и закроется ${читаемо(з.по)}.
+    <button class="btn sm" style="margin-left:10px" onclick="снятьИО()">Отменить</button></div>`;
+}
+
+function открытьИО(){
+  const сотрудники = (LIVE.staff || []).filter(с => с.attested).slice(0, 20);
+  const с1 = '2026-10-05', п1 = '2026-10-19';
+  modal(`
+    <div class="mh"><div><h3>Исполняющий обязанности</h3>
+      <div class="top-sub">на отпуск, больничный или командировку</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note" style="margin-top:0">Функционал начальника откроется у выбранного
+        сотрудника <b>только на указанные даты</b> и закроется сам, когда они пройдут.
+        Отдельно снимать доступ не нужно — именно это чаще всего забывают сделать.</div>
+
+      <label class="fld">Кому
+        <select id="иоКто">
+          ${сотрудники.map(с => `<option value="${esc(с.name)}">${esc(с.name)} — ${esc(с.role)}</option>`).join('')}
+        </select>
+      </label>
+
+      <div class="два">
+        <label class="fld">С<input type="date" id="иоС" value="${с1}"></label>
+        <label class="fld">По<input type="date" id="иоПо" value="${п1}"></label>
+      </div>
+
+      <div class="note">Назначать можно только аттестованного сотрудника:
+        подпись документов — его полномочие.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьИО()">Назначить</button>
+    </div>`);
+}
+
+function сохранитьИО(){
+  const кто = (document.getElementById('иоКто') || {}).value || '';
+  const с = (document.getElementById('иоС') || {}).value || '';
+  const по = (document.getElementById('иоПо') || {}).value || '';
+  const д1 = датаИз(с), д2 = датаИз(по);
+  if (!кто || !д1 || !д2) { toast('Не заполнены сотрудник или даты'); return; }
+  if (д2 < д1) { toast('Дата «по» раньше даты «с»'); return; }
+  S.ио = { кто, с, по };
+  closeModal();
+  toast(`Исполняющий обязанности: ${кто}, с ${читаемо(с)} по ${читаемо(по)}`);
+  render();
+}
+
+function снятьИО(){
+  S.ио = null;
+  toast('Исполняющий обязанности снят, доступ закрыт');
+  render();
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -5781,7 +7014,9 @@ function render(){
     group:       ['Группа наблюдения', 'Состав, правило и живые разговоры'],
     opreports:   ['Отчёты и подборки', 'Готовые срезы по людям контура'],
     facility:    ['Состояние учреждения', 'Что требует решения сегодня'],
-    signing:     ['Акты на подпись', 'Недопуски, подготовленные вольнонаёмным сотрудником'],
+    signing:     ['Документы на подпись', 'Всё, что пришло по внутреннему документообороту'],
+    orders:      ['Поручения', 'Выданные подчинённым и полученные вами'],
+    appeals:     ['Обращения', 'От заключённых и их родственников'],
     audit:       ['Самоаудит', 'Расхождения по срокам, журналам и доступам'],
     services:    ['Сервисы', 'Что подключено на контуре'],
     staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
@@ -5801,6 +7036,7 @@ function render(){
      live:renderLive, completed:renderCompleted,
      register:renderRegister, profile:renderProfile,
      signing:renderSigning, handed:renderHanded,
+     orders:renderOrders, appeals:renderAppeals,
      situation:renderSituation, prevention:renderPrevention, signals:renderSignals })[S.view]();
   window.scrollTo({top:0});
 }
