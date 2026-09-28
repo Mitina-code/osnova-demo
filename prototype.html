@@ -285,6 +285,21 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .rolebox label.lab{cursor:default}
 
 
+/* ---------- граф связей ----------
+   Радиальная раскладка: человек в центре, контакты по кругу.
+   Красным — связи, поднятые системой; серым пунктиром — обычные. */
+.граф{background:var(--bg); border:1px solid var(--border-soft); border-radius:14px; padding:10px}
+.граф svg{display:block; width:100%; height:auto}
+
+/* ---------- временная шкала ---------- */
+.шкала{position:relative; padding-left:26px}
+.шкала:before{content:''; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:var(--border)}
+.шкала-точка{position:relative; margin-bottom:18px}
+.шкала-точка:before{content:''; position:absolute; left:-22px; top:6px; width:9px; height:9px;
+  border-radius:50%; background:var(--primary); box-shadow:0 0 0 3px var(--lilac)}
+.шкала-дата{font-size:12.5px; color:var(--muted); margin-bottom:3px}
+.шкала-текст{font-size:14.5px; line-height:1.6}
+
 /* ---------- фраза дня, праздник, журнал ---------- */
 .фраза{
   display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;
@@ -704,6 +719,9 @@ const S = {
   set:'shift-peak',
   stack:'green',
   trust:'full',              // full | half | manual
+  automation:'mid',          // режим автоматического контроля: high | mid | low
+  графРежим:'risk',          // что показывать на графе связей
+  черновикГруппы:null, черновикКонтакта:null, черновикДелегата:null,
   queue: [],
   log: [],
   openId: null,
@@ -832,9 +850,9 @@ const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
                 разделы:['queue','assignments','register','archive','reports','channel','support','legal'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
-                разделы:['feed','handed','assignments','people','groups','opreports','channel','support','legal'] },
+                разделы:['feed','handed','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
-                разделы:['facility','signing','assignments','audit','services','staff','complaints','channel','support','legal'] },
+                разделы:['facility','signing','complaints','assignments','audit','staff','services','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
                 разделы:['live','completed','assignments','channel','support','legal'] },
 };
@@ -1941,8 +1959,14 @@ function renderFeed(){
                  orange: все.filter(e=>e.risk==='orange'&&e.status==='new').length };
 
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Персональная лента</h1>
-      <p>События, где система не справилась сама и нужен человек.</p></div>
+    <div class="page-head head-row">
+      <div><h1>Персональная лента</h1>
+        <p>События, где система не справилась сама и нужен человек.</p></div>
+      <div class="head-acts">
+        <button class="btn sm" onclick="открытьРежимАвтоматики()">
+          Автоматический контроль: ${РЕЖИМЫ_АВТОМАТИКИ[S.automation][0]}</button>
+      </div>
+    </div>
 
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
@@ -1990,6 +2014,9 @@ function событиеHTML(e){
       <div class="why" style="margin-top:6px"><b>Система сделала:</b> ${esc(e.auto)}</div>
     </div>
     <div class="acts">
+      ${e.risk !== 'green' && e.pid ? `<button class="btn sm" onclick="наблюдать7('${e.pid}','${esc(e.person)}')"
+        title="Поставить под наблюдение на неделю, не открывая карточку">Наблюдать 7 дней</button>` : ''}
+      <button class="btn sm" onclick="открытьДелегирование('${esc(e.title)}')">Передать</button>
       <button class="btn sm" onclick="открытьСобытие('${e.id}')">Разобрать</button>
       ${e.status === 'new' ? `<button class="btn sm primary" onclick="взятьВРаботу('${e.id}')">В работу</button>` : ''}
     </div>
@@ -2120,24 +2147,27 @@ function открытьДосье(id){
           : '<div class="top-sub">За эту смену материалов этого человека нет.</div>'}`; })()}
     </div>
     <div class="mf">
-      <button class="btn" onclick="closeModal()">Закрыть</button>
-      <button class="btn primary" onclick="добавитьВГруппу('${p.id}')">Добавить в группу</button>
+      <button class="btn" onclick="открытьШкалу('${p.id}')">Временная шкала</button>
+      <button class="btn" onclick="открытьГраф('${p.id}')">Связи</button>
+      <button class="btn" onclick="вСвоюГруппу('${p.id}')">В свою группу</button>
+      <button class="btn primary" onclick="добавитьВГруппу('${p.id}')">В системную группу</button>
     </div>`);
 }
 
 function контактHTML(pid, i, c){
-  const ключ = pid + ':' + i;
-  const выкл = LIVE.контакты[ключ] || {};
+  const s = состояниеКонтакта(pid, i);
   const каналы = [['phone','телефон'],['video','видео'],['message','сообщения']];
+  const ограничено = каналы.filter(([k]) => s[k]).length;
   return `<div class="citem"><div>
       <div class="w">${esc(c.name)} ${c.protected ? '<span class="chip a">защищённый</span>' : ''}</div>
       <div class="s">${esc(c.role)} · ${esc(c.phone)} · ${c.verified ? 'подтверждён' : 'не подтверждён'}</div>
       <div class="marks" style="margin-top:8px">
-        ${каналы.map(([k, t]) => `<button class="chip ${выкл[k] ? 'r' : 'g'}"
-            onclick="переключитьКанал('${pid}',${i},'${k}')" title="${c.protected ? 'Защищённый контакт' : 'Нажмите, чтобы переключить'}">
-            ${t}: ${выкл[k] ? 'выкл' : 'вкл'}</button>`).join('')}
+        <span class="chip ${s.active ? 'g' : 'o'}">${s.active ? 'активен' : 'приостановлен'}</span>
+        ${каналы.map(([k, t]) => `<span class="chip ${s[k] ? 'r' : ''}">${t}: ${s[k] ? 'ограничен' : 'доступен'}</span>`).join('')}
       </div>
-    </div></div>`;
+      ${s.reason ? `<div class="s" style="margin-top:6px">${esc(s.reason)} · ${esc(s.until)} · ${esc(s.by)}, ${esc(s.at)}</div>` : ''}
+    </div>
+    <button class="btn sm" onclick="открытьУправлениеКонтактом('${pid}',${i})">Управление</button></div>`;
 }
 
 /* Из досье оперативника можно открыть материал. Карточка материала живёт
@@ -2147,16 +2177,7 @@ function открытьМатериал(id){
   openCard(id);
 }
 
-function переключитьКанал(pid, i, k){
-  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
-  const c = p.contacts[i];
-  if (c.protected) { toast('Защищённый контакт: изменение доступно только по специальному основанию'); return; }
-  const ключ = pid + ':' + i;
-  LIVE.контакты[ключ] = LIVE.контакты[ключ] || {};
-  LIVE.контакты[ключ][k] = !LIVE.контакты[ключ][k];
-  открытьДосье(pid);
-  toast('Изменение записано в журнал с основанием и сроком пересмотра');
-}
+
 
 /* ---------------- Группы и наблюдение ---------------- */
 
@@ -2182,8 +2203,18 @@ function renderGroups(){
     </div>`;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Группы и наблюдение</h1>
-      <p>Автоматические группы система собирает сама. Ручные создаёт оперативник под конкретную задачу.</p></div>
+    <div class="page-head head-row">
+      <div><h1>Группы и наблюдение</h1>
+        <p>Автоматические группы система собирает сама. Свои создаёт оперативник под конкретную задачу.</p></div>
+      <div class="head-acts">
+        <button class="btn primary" onclick="открытьСозданиеГруппы()">Создать свою группу</button>
+      </div>
+    </div>
+
+    <div class="note">Системные подборки настроены ЗТ как стартовый профиль. Признаки, пороги
+      и состав меняются по требованиям ФСИН — ОСНОВА хранит версию настроек, чтобы было видно,
+      по какой методике собрана подборка.</div>
+
     <h2 class="sect">Автоматические · ${авто.length}</h2>
     ${авто.map(блок).join('')}
     <h2 class="sect">Ручные · ${ручные.length}</h2>
@@ -2597,6 +2628,16 @@ function собратьОперативника(){
     const n = Math.min(g.count, 14);
     ОПЕР.составы[g.id] = люди.slice(i, i + n).map(p => p.id);
     i = (i + n) % Math.max(1, люди.length - n);
+  });
+
+  // События привязываем к настоящим людям из населения: имена в событиях
+  // были написаны вручную и ни с кем в базе не совпадали.
+  LIVE.events.forEach((e, n) => {
+    const p = люди[(n * 37) % люди.length];
+    if (!p) return;
+    e.pid = p.id;
+    e.person = p.name;
+    e.unit = p.unit;
   });
 
   // Индекс телефонов — из него собирается граф связей
@@ -4132,6 +4173,473 @@ function сменитьАттестацию(id){
   render();
   if (s.attested) toast(s.name + ' — аттестованный сотрудник');
   else уведомитьПредставителя(s.name, s.role);
+}
+
+/* ====================================================================
+   ОПЕРАТИВНИК: СЕМЬ ДОРАБОТОК ПО ПРОТОТИПУ v6
+
+   Порядок тот же, в каком их назвал владелец продукта:
+     1 управление контактом      5 временная шкала
+     2 режим автоматического      6 наблюдать 7 дней
+       контроля                   7 делегирование
+     3 граф связей
+     4 своя группа наблюдения
+   ==================================================================== */
+
+/* ============ 1. УПРАВЛЕНИЕ КОНТАКТОМ ============
+   Раньше канал переключался нажатием на метку: без основания, без срока
+   и без следа. Между тем это ограничение доступности связи для человека,
+   и оно должно быть обосновано и обозримо. */
+
+const СРОКИ_ОГРАНИЧЕНИЯ = [
+  ['7', 'на 7 суток'],
+  ['30', 'на 30 суток'],
+  ['0', 'бессрочно, до отдельного решения'],
+];
+const ОСНОВАНИЯ_ОГРАНИЧЕНИЯ = [
+  'Контакт не подтверждён, заявленное родство не проверено',
+  'Номер встречается у нескольких человек',
+  'Сработало правило анализатора по этому контакту',
+  'По материалам оперативной проверки',
+  'По письменному указанию начальника учреждения',
+];
+
+function состояниеКонтакта(pid, i){
+  const ключ = pid + ':' + i;
+  LIVE.контакты[ключ] = LIVE.контакты[ключ] || { active: true, phone: false, video: false, message: false };
+  return LIVE.контакты[ключ];
+}
+
+function открытьУправлениеКонтактом(pid, i){
+  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
+  const c = p.contacts[i]; if (!c) return;
+  const s = состояниеКонтакта(pid, i);
+  S.черновикКонтакта = { основание: ОСНОВАНИЯ_ОГРАНИЧЕНИЯ[0], срок: '30' };
+
+  const каналы = [['phone', 'телефон'], ['video', 'видеосвязь'], ['message', 'сообщения']];
+
+  modal(`
+    <div class="mh">
+      <div><h3>${esc(c.name)}</h3>
+        <div class="top-sub">${esc(c.role)} · ${esc(c.phone)} · контакт ${esc(p.name)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn" style="margin-top:0"><b>Это управление доступностью контакта в ОСНОВЕ,</b>
+        а не правка заявления заключённого и не изменение перечня номеров.
+        Основание и срок сохраняются в журнале и видны при проверке.</div>
+
+      <div class="kv">
+        <div class="k">Состояние</div>
+        <div><span class="chip ${s.active ? 'g' : 'o'}">${s.active ? 'активен' : 'приостановлен'}</span></div>
+        <div class="k">Подтверждение</div>
+        <div>${c.verified ? 'родство подтверждено сотрудником' : '<span class="chip o">не подтверждён</span>'}</div>
+        ${c.protected ? '<div class="k">Особый порядок</div><div><span class="chip a">защищённая переписка</span></div>' : ''}
+      </div>
+
+      ${c.protected ? `<div class="note warn">Защищённый контакт — адвокат или иное лицо,
+        оказывающее юридическую помощь. Ограничение возможно только по отдельному
+        мотивированному решению, в ОСНОВЕ оно не оформляется.</div>` : `
+
+      <h3 style="margin:20px 0 10px">Доступные каналы</h3>
+      <div class="clist">
+        ${каналы.map(([k, т]) => `
+          <div class="citem"><div>
+            <div class="w">${т}</div>
+            <div class="s">${s[k] ? 'канал ограничен' : 'канал доступен'}</div>
+          </div>
+          <button class="btn sm ${s[k] ? 'primary' : ''}" onclick="переключитьКанал('${pid}',${i},'${k}')">
+            ${s[k] ? 'Вернуть' : 'Ограничить'}</button></div>`).join('')}
+      </div>
+
+      <h3 style="margin:20px 0 10px">Основание</h3>
+      ${ОСНОВАНИЯ_ОГРАНИЧЕНИЯ.map((о, n) => `
+        <label class="opt ${n === 0 ? 'on' : ''}" onclick="выбратьОснование(this, ${n})">
+          <b>${esc(о)}</b></label>`).join('')}
+
+      <h3 style="margin:20px 0 10px">Срок</h3>
+      <div class="bar"><div class="seg">
+        ${СРОКИ_ОГРАНИЧЕНИЯ.map(([v, т]) => `
+          <button class="${v === '30' ? 'on' : ''}" onclick="выбратьСрок(this,'${v}')">${т}</button>`).join('')}
+      </div></div>`}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      ${c.protected ? '' : `
+        <button class="btn ${s.active ? 'danger' : 'primary'}" onclick="переключитьКонтакт('${pid}',${i})">
+          ${s.active ? 'Приостановить контакт' : 'Активировать контакт'}</button>
+        <button class="btn primary" onclick="сохранитьОграничение('${pid}',${i})">Сохранить</button>`}
+    </div>`);
+}
+
+function выбратьОснование(el, n){
+  S.черновикКонтакта.основание = ОСНОВАНИЯ_ОГРАНИЧЕНИЯ[n];
+  [...el.parentNode.querySelectorAll('.opt')].forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+}
+function выбратьСрок(el, v){
+  S.черновикКонтакта.срок = v;
+  [...el.parentNode.querySelectorAll('button')].forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function переключитьКанал(pid, i, k){
+  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
+  if (p.contacts[i].protected) { toast('Защищённый контакт: ограничение в ОСНОВЕ не оформляется'); return; }
+  const s = состояниеКонтакта(pid, i);
+  s[k] = !s[k];
+  открытьУправлениеКонтактом(pid, i);
+}
+
+function переключитьКонтакт(pid, i){
+  const s = состояниеКонтакта(pid, i);
+  s.active = !s.active;
+  открытьУправлениеКонтактом(pid, i);
+}
+
+function сохранитьОграничение(pid, i){
+  const p = ROL.persons.find(x => x.id === pid);
+  const c = p.contacts[i];
+  const s = состояниеКонтакта(pid, i);
+  const ч = S.черновикКонтакта || { основание: ОСНОВАНИЯ_ОГРАНИЧЕНИЯ[0], срок: '30' };
+  s.reason = ч.основание;
+  s.until = ч.срок === '0' ? 'до отдельного решения' : 'через ' + ч.срок + ' суток';
+  s.by = профиль().name;
+  s.at = nowStamp();
+  closeModal();
+  открытьДосье(pid);
+  toast('Записано: ' + c.name + ' · ' + ч.основание.toLowerCase() + ' · ' + s.until);
+}
+
+/* ============ 2. РЕЖИМ АВТОМАТИЧЕСКОГО КОНТРОЛЯ ============ */
+
+const РЕЖИМЫ_АВТОМАТИКИ = {
+  high: ['Высокий', 'Система глубже разбирает сигналы и сама предлагает превентивные действия. Сигналов больше, ложных — тоже больше.'],
+  mid:  ['Средний', 'Равновесие между глубиной разбора и числом сигналов. Стартовое значение.'],
+  low:  ['Низкий', 'Только то, что выходит за очевидные рамки. Меньше шума и меньше находок.'],
+};
+
+/* Обязательный контур — правила, прямо следующие из нормативных
+   требований. Локальный режим их не отменяет. */
+const ОБЯЗАТЕЛЬНЫЙ_КОНТУР = [
+  'Признаки подготовки противоправного действия',
+  'Угроза жизни и здоровью',
+  'Сведения о порядке охраны и надзора',
+  'Участие в разговоре лица, не заявленного в перечне',
+];
+
+function открытьРежимАвтоматики(){
+  modal(`
+    <div class="mh"><div><h3>Режим автоматического контроля</h3>
+      <div class="top-sub">Насколько глубоко система разбирает сигналы по учреждению</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn" style="margin-top:0"><b>Обязательный контур отключить нельзя.</b>
+        Правила, прямо следующие из нормативных требований, действуют при любом режиме:
+        <ul class="plain warn-list" style="margin-top:10px">
+          ${ОБЯЗАТЕЛЬНЫЙ_КОНТУР.map(x => `<li>${esc(x)}</li>`).join('')}
+        </ul>
+      </div>
+      ${Object.keys(РЕЖИМЫ_АВТОМАТИКИ).map(k => `
+        <label class="opt ${S.automation === k ? 'on' : ''}" onclick="назначитьАвтоматику('${k}')">
+          <b>${esc(РЕЖИМЫ_АВТОМАТИКИ[k][0])}</b>
+          <span>${esc(РЕЖИМЫ_АВТОМАТИКИ[k][1])}</span></label>`).join('')}
+      <div class="note" style="margin-bottom:0">Режим влияет на то, сколько событий попадёт
+        в вашу ленту. Ни один режим не ограничивает услуги сам по себе — ограничение
+        всегда остаётся отдельным решением человека.</div>
+    </div>
+    <div class="mf"><button class="btn primary" onclick="closeModal()">Закрыть</button></div>`);
+}
+
+function назначитьАвтоматику(k){
+  S.automation = k;
+  closeModal(); render();
+  toast('Режим автоматического контроля: ' + РЕЖИМЫ_АВТОМАТИКИ[k][0]);
+}
+
+/* ============ 3. ГРАФ СВЯЗЕЙ ============
+   По умолчанию видны только связи, поднятые системой для проверки.
+   Кнопка «Все связи» добавляет обычные контакты — чтобы не потерять
+   контекст и не принять норму за аномалию. */
+
+function открытьГраф(pid, режим){
+  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
+  S.графРежим = режим || S.графРежим || 'risk';
+  const всеСвязи = S.графРежим === 'all';
+
+  const опасные = связиЧеловека(p);
+  const опасныеНомера = new Set(опасные.map(x => x.контакт.phone));
+
+  const узлы = p.contacts
+    .map((c, i) => ({ c, i, риск: опасныеНомера.has(c.phone) }))
+    .filter(x => всеСвязи || x.риск);
+
+  const W = 760, H = 400, cx = W / 2, cy = H / 2;
+  const R = Math.min(150, 60 + узлы.length * 8);
+
+  const точки = узлы.map((у, n) => {
+    const угол = (Math.PI * 2 * n) / Math.max(1, узлы.length) - Math.PI / 2;
+    return { ...у, x: cx + Math.cos(угол) * R, y: cy + Math.sin(угол) * R * 0.78 };
+  });
+
+  const рёбра = точки.map(т => `
+    <line x1="${cx}" y1="${cy}" x2="${т.x.toFixed(0)}" y2="${т.y.toFixed(0)}"
+      stroke="${т.риск ? 'var(--danger)' : 'var(--border)'}"
+      stroke-width="${т.риск ? 2.2 : 1.2}" ${т.риск ? '' : 'stroke-dasharray="4 4"'} />`).join('');
+
+  const кружки = точки.map(т => {
+    const цвет = т.риск ? 'var(--danger)' : (т.c.verified ? 'var(--success)' : 'var(--warning)');
+    const подпись = т.c.name.split(' ')[0];
+    const снизу = т.y > cy;
+    return `
+      <g>
+        <circle cx="${т.x.toFixed(0)}" cy="${т.y.toFixed(0)}" r="22" fill="#fff" stroke="${цвет}" stroke-width="2.4"/>
+        <text x="${т.x.toFixed(0)}" y="${(т.y + 5).toFixed(0)}" text-anchor="middle"
+          font-size="15" fill="${цвет}">${т.c.verified ? '✓' : '?'}</text>
+        <text x="${т.x.toFixed(0)}" y="${(снизу ? т.y + 42 : т.y - 30).toFixed(0)}" text-anchor="middle"
+          font-size="12" fill="var(--muted)">${esc(подпись)}</text>
+      </g>`;
+  }).join('');
+
+  modal(`
+    <div class="mh"><div><h3>Связи · ${esc(p.name)}</h3>
+      <div class="top-sub">${esc(p.unit)} · контактов в перечне: ${p.contacts.length}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="bar">
+        <div class="seg">
+          <button class="${!всеСвязи ? 'on' : ''}" onclick="открытьГраф('${pid}','risk')">Связи для проверки</button>
+          <button class="${всеСвязи ? 'on' : ''}" onclick="открытьГраф('${pid}','all')">Все связи</button>
+        </div>
+        <span class="chip">${точки.length} из ${p.contacts.length}</span>
+      </div>
+
+      <div class="note" style="margin-top:0">${всеСвязи
+        ? 'Показаны все контакты перечня. Обычные связи — серым пунктиром: они нужны, чтобы не принять норму за аномалию.'
+        : 'Показаны только связи, которые система подняла для проверки: один и тот же номер встречается у нескольких человек.'}</div>
+
+      ${точки.length ? `
+        <div class="граф">
+          <svg viewBox="0 0 ${W} ${H}" width="100%">
+            ${рёбра}
+            <circle cx="${cx}" cy="${cy}" r="34" fill="var(--lilac)" stroke="var(--primary)" stroke-width="2.6"/>
+            <text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="15" font-weight="700"
+              fill="var(--primary)">${esc(p.name.split(' ').map(w => w[0]).join('').slice(0, 2))}</text>
+            <text x="${cx}" y="${cy + 58}" text-anchor="middle" font-size="12.5"
+              fill="var(--muted)">${esc(p.name.split(' ')[0])}</text>
+            ${кружки}
+          </svg>
+        </div>
+        <div class="marks" style="margin-top:12px">
+          <span class="chip r">поднято системой</span>
+          <span class="chip g">✓ подтверждён</span>
+          <span class="chip o">? не подтверждён</span>
+        </div>` : `
+        <div class="empty"><div class="big">${ICON.check}</div><b>Связей для проверки нет</b>
+          <div>Ни один номер из перечня не встречается у других людей.</div></div>`}
+
+      ${опасные.length ? `
+        <h3 style="margin:20px 0 10px">Общие контакты · ${опасные.length}</h3>
+        <div class="clist">${опасные.map(x => `
+          <div class="citem"><div>
+            <div class="w">${esc(x.контакт.name)} · ${esc(x.контакт.phone)}</div>
+            <div class="s">заявлен как «${esc(x.контакт.role)}» · встречается ещё у ${x.люди.length}</div>
+            <div class="marks" style="margin-top:8px">${x.люди.map(o =>
+              `<button class="chip ${RISK_LETTER[o.risk]}" onclick="closeModal(); открытьДосье('${o.id}')">${esc(o.name)}</button>`).join('')}</div>
+          </div></div>`).join('')}</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal(); открытьДосье('${pid}')">К досье</button>
+      <button class="btn primary" onclick="closeModal()">Закрыть</button>
+    </div>`);
+}
+
+/* ============ 4. СВОЯ ГРУППА НАБЛЮДЕНИЯ ============ */
+
+const РЕЖИМЫ_ГРУППЫ = {
+  signal: ['Только сигналы', 'Система поднимает события по составу группы. Разговоры не слушаются.'],
+  listen: ['Прослушивание переговоров', 'Разговоры участников попадают в раздел «Сейчас говорят». Требует отдельного основания и фиксируется в журнале.'],
+  strict: ['Усиленный анализ', 'Более низкие пороги срабатывания для участников группы. Ограничений сам по себе не вводит.'],
+};
+
+function открытьСозданиеГруппы(предвыбран){
+  S.черновикГруппы = { name: 'Новая группа наблюдения', mode: 'signal', люди: предвыбран ? [предвыбран] : [] };
+  показатьСозданиеГруппы();
+}
+
+function показатьСозданиеГруппы(){
+  const ч = S.черновикГруппы;
+  modal(`
+    <div class="mh"><div><h3>Своя группа наблюдения</h3>
+      <div class="top-sub">Личная подборка оперативного сотрудника</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <label class="fld">Название
+        <input id="grName" value="${esc(ч.name)}" oninput="S.черновикГруппы.name=this.value"></label>
+
+      <h3 style="margin:18px 0 10px">Режим</h3>
+      ${Object.keys(РЕЖИМЫ_ГРУППЫ).map(k => `
+        <label class="opt ${ч.mode === k ? 'on' : ''}" onclick="выбратьРежимГруппы('${k}')">
+          <b>${esc(РЕЖИМЫ_ГРУППЫ[k][0])}</b><span>${esc(РЕЖИМЫ_ГРУППЫ[k][1])}</span></label>`).join('')}
+
+      ${ч.mode === 'listen' ? `<div class="note warn">Прослушивание переговоров включается
+        по отдельному основанию. Каждое подключение к разговору фиксируется в журнале
+        с указанием сотрудника и времени.</div>` : ''}
+
+      <h3 style="margin:18px 0 10px">Состав · ${ч.люди.length}</h3>
+      ${ч.люди.length ? `<div class="marks">${ч.люди.map(id => {
+        const o = ROL.persons.find(x => x.id === id);
+        return o ? `<span class="chip ${RISK_LETTER[o.risk]}">${esc(o.name)}
+          <button class="link" onclick="убратьИзЧерновика('${id}')">убрать</button></span>` : '';
+      }).join('')}</div>` : '<div class="top-sub">Никто не выбран. Людей можно добавить из досье кнопкой «В свою группу».</div>'}
+
+      <div class="note" style="margin-top:16px; margin-bottom:0">Системные подборки настроены ЗТ
+        как стартовый профиль. Признаки, пороги и состав меняются по требованиям ФСИН —
+        ОСНОВА хранит версию настроек, чтобы было видно, по какой методике собрана подборка.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="создатьГруппу()" ${ч.люди.length ? '' : 'disabled'}>Создать группу</button>
+    </div>`);
+}
+
+function выбратьРежимГруппы(k){ S.черновикГруппы.mode = k; показатьСозданиеГруппы(); }
+function убратьИзЧерновика(id){
+  S.черновикГруппы.люди = S.черновикГруппы.люди.filter(x => x !== id);
+  показатьСозданиеГруппы();
+}
+
+function вСвоюГруппу(pid){
+  if (!S.черновикГруппы) S.черновикГруппы = { name: 'Новая группа наблюдения', mode: 'signal', люди: [] };
+  if (!S.черновикГруппы.люди.includes(pid)) S.черновикГруппы.люди.push(pid);
+  closeModal();
+  показатьСозданиеГруппы();
+}
+
+function создатьГруппу(){
+  const ч = S.черновикГруппы;
+  if (!ч.люди.length) return;
+  const id = 'm' + (LIVE.groups.filter(g => g.type === 'manual').length + 1) + '-' + Date.now().toString().slice(-4);
+  LIVE.groups.push({
+    id, name: ч.name.trim() || 'Группа без названия', type: 'manual',
+    count: ч.люди.length, color: 'orange',
+    criterion: 'личная подборка: ' + профиль().name,
+    policy: РЕЖИМЫ_ГРУППЫ[ч.mode][1],
+    mode: ч.mode,
+  });
+  ОПЕР.составы[id] = [...ч.люди];
+  S.черновикГруппы = null;
+  closeModal(); go('groups');
+  toast('Группа создана: ' + LIVE.groups[LIVE.groups.length - 1].name);
+}
+
+/* ============ 5. ВРЕМЕННАЯ ШКАЛА ============ */
+
+function открытьШкалу(pid){
+  const p = ROL.persons.find(x => x.id === pid); if (!p) return;
+  const ист = архивЧеловека(p.id);
+  const порядок = ист.slice().sort((a, b) => b[1] - a[1]);
+
+  /* Вехи: прибытие, появление контактов, первое и последнее отправление. */
+  const события = [];
+  события.push({ дата: p.since, текст: '<b>Прибытие в учреждение.</b> Личность установлена, заведено дело.' });
+  p.contacts.slice(0, 4).forEach((c, i) => {
+    события.push({
+      дата: hДата(Math.max(1, 88 - i * 12)),
+      текст: 'Добавлен контакт «' + esc(c.name) + '», заявлен как «' + esc(c.role) + '». '
+        + (c.verified ? 'Подтверждён сотрудником.' : '<b>Родство не подтверждено.</b>'),
+    });
+  });
+  if (порядок.length) {
+    события.push({ дата: hДата(порядок[0][1]), текст: 'Первое отправление в архиве.' });
+    const недоп = ист.filter(z => z[8] === 2).length;
+    if (недоп) события.push({
+      дата: hДата(ист.filter(z => z[8] === 2).map(z => z[1]).sort((a, b) => a - b)[0]),
+      текст: '<b>Недопуск.</b> Всего за три месяца: ' + недоп + '.',
+    });
+    события.push({ дата: hДата(порядок[порядок.length - 1][1]), текст: 'Последнее отправление.' });
+  }
+
+  modal(`
+    <div class="mh"><div><h3>Временная шкала · ${esc(p.name)}</h3>
+      <div class="top-sub">${esc(p.unit)} · в учреждении с ${esc(p.since)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${ист.length ? '' : '<div class="note">Архив переписки по этому человеку пуст.</div>'}
+      <div class="шкала">
+        ${события.map(с => `
+          <div class="шкала-точка">
+            <div class="шкала-дата tnum">${esc(с.дата)}</div>
+            <div class="шкала-текст">${с.текст}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal(); открытьДосье('${pid}')">К досье</button>
+      <button class="btn primary" onclick="closeModal()">Закрыть</button>
+    </div>`);
+}
+
+/* ============ 6. НАБЛЮДАТЬ 7 ДНЕЙ ============
+   Быстрое действие прямо на событии: не открывая карточку, поставить
+   человека под наблюдение на неделю. */
+
+function наблюдать7(pid, имя){
+  let g = LIVE.groups.find(x => x.id === 'watch7');
+  if (!g) {
+    g = { id: 'watch7', name: 'Наблюдение 7 суток', type: 'manual', count: 0, color: 'orange',
+      criterion: 'поставлены под наблюдение вручную из ленты событий',
+      policy: 'повышенное внимание к сигналам в течение недели, ограничений не вводится', mode: 'signal' };
+    LIVE.groups.push(g);
+    ОПЕР.составы.watch7 = [];
+  }
+  if (!ОПЕР.составы.watch7.includes(pid)) {
+    ОПЕР.составы.watch7.push(pid);
+    g.count = ОПЕР.составы.watch7.length;
+  }
+  render();
+  toast((имя || 'Человек') + ' под наблюдением 7 суток. Группа «Наблюдение 7 суток».');
+}
+
+/* ============ 7. ДЕЛЕГИРОВАНИЕ ============ */
+
+function открытьДелегирование(тема, pid){
+  const кандидаты = LIVE.staff.filter(s => s.access === 'действует').slice(0, 12);
+  S.черновикДелегата = кандидаты.length ? кандидаты[0].id : null;
+  modal(`
+    <div class="mh"><div><h3>Передать другому сотруднику</h3>
+      <div class="top-sub">${esc(тема)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <label class="fld">Кому
+        <select id="delTo" onchange="S.черновикДелегата=this.value">
+          ${кандидаты.map(s => `<option value="${s.id}">${esc(s.name)} · ${esc(s.role)}</option>`).join('')}
+        </select></label>
+      <label class="fld">Что нужно сделать
+        <textarea id="delNote" placeholder="Коротко, своими словами"></textarea></label>
+      <div class="note" style="margin-bottom:0">Поручение вступит в силу, когда получатель его примет.
+        Пока оно не принято, ответственность остаётся на вас — это видно в «Моих поручениях».</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="подтвердитьДелегирование('${esc(тема)}')">Передать</button>
+    </div>`);
+}
+
+function подтвердитьДелегирование(тема){
+  const s = LIVE.staff.find(x => x.id === S.черновикДелегата);
+  const поле = document.getElementById('delNote');
+  const текст = (поле && поле.value.trim()) || 'Без пояснения';
+  REF.assignments.unshift({
+    id: 'ПР-' + (700 + Math.floor(Math.random() * 99)),
+    title: тема,
+    from: профиль().name,
+    due: 'ожидает принятия',
+    urgent: false,
+    status: 'open',
+    note: текст + (s ? ' · передано: ' + s.name + ', ' + s.role : ''),
+  });
+  closeModal(); render();
+  toast(s ? 'Передано: ' + s.name + '. Вступит в силу после принятия.' : 'Передано');
 }
 
 /* ---------------- маршрутизация ---------------- */
