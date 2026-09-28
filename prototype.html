@@ -722,6 +722,7 @@ const S = {
   automation:'mid',          // режим автоматического контроля: high | mid | low
   графРежим:'risk',          // что показывать на графе связей
   черновикГруппы:null, черновикКонтакта:null, черновикДелегата:null,
+  профФильтр:'all', черновикБеседы:null, черновикСнятия:null, черновикРапорта:null,
   queue: [],
   log: [],
   openId: null,
@@ -830,6 +831,9 @@ const РАЗДЕЛЫ = {
   signing:     [ICON.legal,      'Акты на подпись'],
   feed:        [ICON.feed,       'Персональная лента'],
   handed:      [ICON.inbox,      'От цензора'],
+  situation:   [ICON.facility,   'Обстановка'],
+  prevention:  [ICON.people,     'Профилактический учёт'],
+  signals:     [ICON.feed,       'Сигналы системы'],
   people:      [ICON.people,     'Люди и связи'],
   groups:      [ICON.groups,     'Группы и наблюдение'],
   opreports:   [ICON.reports,    'Отчёты и подборки'],
@@ -849,8 +853,8 @@ const РАЗДЕЛЫ = {
 const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
                 разделы:['queue','assignments','register','archive','reports','channel','support','legal'] },
-  operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'feed',
-                разделы:['feed','handed','assignments','groups','people','opreports','channel','support','legal'] },
+  operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'situation',
+                разделы:['situation','prevention','handed','signals','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
                 разделы:['facility','signing','complaints','assignments','audit','staff','services','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
@@ -880,6 +884,9 @@ function renderNav(){
     staff: LIVE.staff.filter(x=>x.review).length,
     signing: актовЖдёт(),
     handed: переданные().length,
+    situation: требуетДействия(),
+    prevention: просроченные().length,
+    signals: LIVE.events.filter(e=>e.status==='new').length,
     complaints: LIVE.complaints.filter(c=>c.status!=='закрыто').length,
   };
   document.getElementById('nav').innerHTML = роль.разделы.map(v => {
@@ -910,7 +917,7 @@ function renderQueue(){
   const actionText = {
     green:['Согласовать все', 'Признаков нарушения не выявлено. Отобранные для точечного контроля останутся.'],
     orange:['Разобрать подряд', 'Материалы откроются один за другим.'],
-    red:['Оформить недопуск пачкой', 'Мотивировка по каждому — на проверку.']
+    red:['Оформить недопуск пачкой', 'Мотивировка по каждому — на проверку. Либо отдать всю стопку оперативному сотруднику.']
   }[S.stack];
 
   const allowed = groupAllowed(S.stack);
@@ -967,9 +974,12 @@ function renderQueue(){
     ${cur.length ? `
       ${bulk.length ? `<div class="actionbar">
         <div class="txt"><b>${actionText[0]}</b> — ${actionText[1]}</div>
-        ${allowed
-          ? `<button class="btn ${S.stack==='red'?'danger':'primary'}" onclick="startGroup('${S.stack}')">${actionText[0]} · ${bulk.length}</button>`
-          : `<span class="chip">${esc(reason)}</span>`}
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          ${S.stack === 'red' ? `<button class="btn" onclick="передатьСтопку()">Оперативнику · ${bulk.length}</button>` : ''}
+          ${allowed
+            ? `<button class="btn ${S.stack==='red'?'danger':'primary'}" onclick="startGroup('${S.stack}')">${actionText[0]} · ${bulk.length}</button>`
+            : `<span class="chip">${esc(reason)}</span>`}
+        </div>
       </div>` : ''}
       ${блокВыборки(cur, samples)}
       <div class="rows">${page.map(rowHTML).join('')}</div>
@@ -2150,6 +2160,7 @@ function открытьДосье(id){
       <button class="btn" onclick="открытьШкалу('${p.id}')">Временная шкала</button>
       <button class="btn" onclick="открытьГраф('${p.id}')">Связи</button>
       <button class="btn" onclick="вСвоюГруппу('${p.id}')">В свою группу</button>
+      <button class="btn" onclick="closeModal(); открытьРапорт('${p.id}')">Рапорт на учёт</button>
       <button class="btn primary" onclick="добавитьВГруппу('${p.id}')">В системную группу</button>
     </div>`);
 }
@@ -3894,6 +3905,55 @@ function решённыеОперативником(){ return S.queue.filter(x =
 
 /* ---------- сторона цензора ---------- */
 
+/* Передать оперативнику всю красную стопку разом. Пояснение одно на всех:
+   при таком объёме писать по каждому отдельно бессмысленно, а обязать —
+   значит получить формальную отписку. */
+function передатьСтопку(){
+  const items = left('red');
+  if (!items.length) { toast('Красных материалов нет'); return; }
+  modal(`
+    <div class="mh"><div><h3>Передать оперативнику всю стопку</h3>
+      <div class="top-sub">Красных материалов: ${items.length}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note warn" style="margin-top:0"><b>Решение по каждому примет оперативный сотрудник.</b>
+        Материалы уйдут из ваших стопок и будут ждать его. Срок по ним продолжает идти,
+        поэтому передавайте сразу, а не в конце смены.</div>
+
+      <label class="fld">Пояснение ко всей пачке
+        <textarea id="hnoteAll" placeholder="Например: по всем требуется оперативная проверка до оформления актов"></textarea></label>
+
+      <h3 style="margin:16px 0 10px">Что уйдёт · первые 10</h3>
+      <ul class="plain warn-list">
+        ${items.slice(0, 10).map(x => `<li><b>${esc(x.id)}</b> · ${esc(x.from)} → ${esc(x.to)} — ${esc(x.sum)}</li>`).join('')}
+      </ul>
+      ${items.length > 10 ? `<div class="top-sub">…и ещё ${items.length - 10}</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="подтвердитьПередачуСтопки()">Передать все ${items.length}</button>
+    </div>`);
+}
+
+function подтвердитьПередачуСтопки(){
+  const items = left('red');
+  if (!items.length) { closeModal(); return; }
+  const поле = document.getElementById('hnoteAll');
+  const пояснение = (поле && поле.value.trim()) || 'Передано пачкой без отдельного пояснения';
+  const когда = nowStamp();
+  const кто = профиль().name;
+  items.forEach(x => {
+    x.handNote = пояснение;
+    x.handAt = когда;
+    x.handBy = кто;
+    x.handBulk = items.length;
+    x.status = 'handed';
+  });
+  S.conveyor = null;
+  closeModal(); render();
+  toast('Передано оперативному сотруднику: ' + items.length + ' ' + plural(items.length, 'материал', 'материала', 'материалов'));
+}
+
 function передатьОперативнику(id){
   const x = S.queue.find(m => m.id === id); if (!x) return;
   modal(`
@@ -4642,6 +4702,480 @@ function подтвердитьДелегирование(тема){
   toast(s ? 'Передано: ' + s.name + '. Вступит в силу после принятия.' : 'Передано');
 }
 
+/* ====================================================================
+   РАБОЧЕЕ МЕСТО ОПЕРАТИВНОГО СОТРУДНИКА
+
+   Построено вокруг его работы, а не вокруг наших сервисов.
+   Задачи заданы статьёй 84 УИК РФ:
+     1) личная безопасность осуждённых, персонала и иных лиц;
+     2) выявление, предупреждение и раскрытие преступлений и нарушений;
+     3) розыск совершивших побег и уклоняющихся;
+     4) содействие в раскрытии преступлений, совершённых до прибытия.
+
+   Ежедневная основа второй задачи — профилактический учёт: комиссия,
+   трёхмесячный пересмотр, закреплённый сотрудник, индивидуальные беседы.
+   Переписка и разговоры — только один из источников сведений, поэтому
+   раздел «От цензора» стоит наравне с рапортами дежурной смены и
+   сообщениями медчасти, а не выше них.
+   ==================================================================== */
+
+const ПРОФУЧЁТ = (ROL.prevention || []).map(z => ({ ...z }));
+const КАТЕГОРИИ = ROL.preventionCats || [];
+const МЕРОПРИЯТИЯ = ROL.measures || [];
+const ОСНОВАНИЯ_СНЯТИЯ = ROL.removal || [];
+const ПРОИСШЕСТВИЯ = (ROL.incidents || []).map(z => ({ ...z, status: 'open' }));
+const ЗАПРОСЫ = (ROL.requests || []).map(z => ({ ...z, status: 'open' }));
+
+const просроченные = () => ПРОФУЧЁТ.filter(z => !z.removed && z.reviewIn < 0);
+const скороПересмотр = () => ПРОФУЧЁТ.filter(z => !z.removed && z.reviewIn >= 0 && z.reviewIn <= 14);
+const безБеседы = () => ПРОФУЧЁТ.filter(z => !z.removed && z.talkDaysAgo > 30);
+const наУчёте = () => ПРОФУЧЁТ.filter(z => !z.removed);
+const мои = () => наУчёте().filter(z => z.owner === 'Петров А.С.');
+const открытыеПроисшествия = () => ПРОИСШЕСТВИЯ.filter(x => x.status === 'open');
+const открытыеЗапросы = () => ЗАПРОСЫ.filter(x => x.status === 'open');
+
+/* Сколько дел требует от оперативника действия сегодня. */
+function требуетДействия(){
+  return просроченные().length + открытыеПроисшествия().filter(x => x.urgency !== 'green').length
+    + переданные().length + открытыеЗапросы().filter(x => x.due <= '05.10.2026').length;
+}
+
+/* ============ ОБСТАНОВКА — домашний экран ============ */
+
+function renderSituation(){
+  const пр = открытыеПроисшествия();
+  const оч = переданные();
+  const зп = открытыеЗапросы();
+  const сроки = просроченные();
+
+  const строкаПроисшествия = x => `
+    <div class="row">
+      <div class="stripe ${x.urgency === 'red' ? 'r' : x.urgency === 'orange' ? 'o' : 'g'}"></div>
+      <div>
+        <div class="who">${esc(x.kind)}</div>
+        <div class="meta">${esc(x.source)}</div>
+        <div class="marks"><span class="chip ${x.urgency === 'red' ? 'r' : x.urgency === 'orange' ? 'o' : ''}">срок: ${esc(x.due)}</span></div>
+      </div>
+      <div><div class="sum">${esc(x.text)}</div></div>
+      <div class="acts">
+        <button class="btn sm" onclick="закрытьПроисшествие('${x.id}')">Отработано</button>
+        <button class="btn sm primary" onclick="разобратьПроисшествие('${x.id}')">Разобрать</button>
+      </div>
+    </div>`;
+
+  const строкаЗапроса = x => `
+    <div class="row">
+      <div class="stripe o"></div>
+      <div>
+        <div class="who">${esc(x.subject)}</div>
+        <div class="meta">${esc(x.from)}</div>
+        <div class="marks"><span class="chip o">ответ до ${esc(x.due)}</span></div>
+      </div>
+      <div><div class="sum">${esc(x.text)}</div></div>
+      <div class="acts"><button class="btn sm primary" onclick="закрытьЗапрос('${x.id}')">Подготовить ответ</button></div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head head-row">
+      <div><h1>Обстановка</h1>
+        <p>Задачи оперативной работы: безопасность, предупреждение, розыск, содействие следствию.</p></div>
+      <div class="head-acts">
+        <button class="btn sm" onclick="открытьРежимАвтоматики()">
+          Автоматический контроль: ${РЕЖИМЫ_АВТОМАТИКИ[S.automation][0]}</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.alert}</div>
+        <div class="k">Требует действия сегодня</div><div class="v tnum">${требуетДействия()}</div>
+        <div class="d">по всем задачам</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.people}</div>
+        <div class="k">На профилактическом учёте</div><div class="v tnum">${наУчёте().length}</div>
+        <div class="d">из них закреплено за вами ${мои().length}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.clock}</div>
+        <div class="k">Просрочен пересмотр</div><div class="v tnum">${сроки.length}</div>
+        <div class="d">комиссия раз в три месяца</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Давно не было беседы</div><div class="v tnum">${безБеседы().length}</div>
+        <div class="d">больше месяца</div></div>
+    </div>
+
+    <h2 class="sect">Личная безопасность · ${пр.length}</h2>
+    <div class="note">Первая задача по статье 84 УИК: безопасность осуждённых, персонала и иных лиц.
+      Сюда приходит всё — рапорты дежурной смены, сообщения медчасти, заявления, звонки родственников.</div>
+    ${пр.length ? `<div class="rows">${пр.map(строкаПроисшествия).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Происшествий нет</b></div>`}
+
+    <h2 class="sect">Предупреждение правонарушений</h2>
+    <div class="cards3">
+      <div class="card">
+        <h3>Просрочен пересмотр · ${сроки.length}</h3>
+        <div class="top-sub">Комиссия рассматривает каждого состоящего на учёте раз в три месяца.</div>
+        <div style="margin-top:12px"><button class="btn ${сроки.length ? 'primary' : ''}"
+          onclick="S.профФильтр='overdue'; go('prevention')">Открыть список</button></div>
+      </div>
+      <div class="card">
+        <h3>Пересмотр на неделях · ${скороПересмотр().length}</h3>
+        <div class="top-sub">Материалы к комиссии готовятся заранее.</div>
+        <div style="margin-top:12px"><button class="btn" onclick="S.профФильтр='soon'; go('prevention')">Открыть список</button></div>
+      </div>
+      <div class="card">
+        <h3>Давно не было беседы · ${безБеседы().length}</h3>
+        <div class="top-sub">Индивидуальная беседа — основное профилактическое мероприятие.</div>
+        <div style="margin-top:12px"><button class="btn" onclick="S.профФильтр='talk'; go('prevention')">Открыть список</button></div>
+      </div>
+    </div>
+
+    ${оч.length ? `
+      <h2 class="sect">Из переписки и разговоров · ${оч.length}</h2>
+      <div class="note">Цензор передала материалы, которые её насторожили. Это один из источников
+        сведений — наравне с рапортами и сообщениями, а не отдельная работа.</div>
+      <div class="actionbar">
+        <div class="txt"><b>Ждут вашего решения.</b> Пока решение не принято, материал не доставлен.</div>
+        <button class="btn primary" onclick="go('handed')">Разобрать · ${оч.length}</button>
+      </div>` : ''}
+
+    <h2 class="sect">Содействие следствию · ${зп.length}</h2>
+    <div class="note">Четвёртая задача: содействие в выявлении и раскрытии преступлений,
+      совершённых осуждёнными до прибытия в учреждение.</div>
+    ${зп.length ? `<div class="rows">${зп.map(строкаЗапроса).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Запросов нет</b></div>`}
+
+    <h2 class="sect">Сигналы системы · ${LIVE.events.filter(e => e.status === 'new').length}</h2>
+    <div class="note">То, что подняла автоматика. Режим разбора — «${esc(РЕЖИМЫ_АВТОМАТИКИ[S.automation][0])}».</div>
+    <div class="rows">${LIVE.events.slice(0, 4).map(событиеHTML).join('')}</div>
+    <div class="more"><button class="btn" onclick="go('signals')">Все сигналы системы</button></div>
+  `;
+}
+
+function закрытьПроисшествие(id){
+  const x = ПРОИСШЕСТВИЯ.find(z => z.id === id); if (!x) return;
+  x.status = 'done'; render();
+  toast('Отмечено отработанным. Запись осталась в журнале.');
+}
+function закрытьЗапрос(id){
+  const x = ЗАПРОСЫ.find(z => z.id === id); if (!x) return;
+  x.status = 'done'; render();
+  toast('Ответ подготовлен и направлен инициатору.');
+}
+
+function разобратьПроисшествие(id){
+  const x = ПРОИСШЕСТВИЯ.find(z => z.id === id); if (!x) return;
+  modal(`
+    <div class="mh"><div><h3>${esc(x.kind)}</h3>
+      <div class="top-sub">${esc(x.source)} · срок: ${esc(x.due)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="body-text">${esc(x.text)}</div>
+      <h3 style="margin:18px 0 10px">Что можно сделать</h3>
+      <ul class="plain">
+        <li>Провести беседу и зафиксировать её</li>
+        <li>Подготовить рапорт о постановке на профилактический учёт</li>
+        <li>Передать материал другому сотруднику</li>
+        <li>Запросить сведения из переписки и разговоров</li>
+      </ul>
+      <div class="note">Действия по происшествию не требуют сервисов ЗТ. Переписка привлекается
+        только если она может дать сведения по этому случаю.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal(); открытьДелегирование('${esc(x.kind)}')">Передать</button>
+      <button class="btn" onclick="closeModal(); открытьРапорт()">Рапорт на учёт</button>
+      <button class="btn primary" onclick="closeModal(); закрытьПроисшествие('${x.id}')">Отработано</button>
+    </div>`);
+}
+
+/* ============ ПРОФИЛАКТИЧЕСКИЙ УЧЁТ ============ */
+
+function renderPrevention(){
+  const ф = S.профФильтр || 'all';
+  const наборы = {
+    all:     ['Все на учёте', наУчёте()],
+    mine:    ['Закреплены за мной', мои()],
+    overdue: ['Просрочен пересмотр', просроченные()],
+    soon:    ['Пересмотр в ближайшие две недели', скороПересмотр()],
+    talk:    ['Давно не было беседы', безБеседы()],
+  };
+  const список = наборы[ф][1];
+
+  const поКатегориям = {};
+  наУчёте().forEach(z => { поКатегориям[z.cat] = (поКатегориям[z.cat] || 0) + 1; });
+
+  const строка = z => `
+    <div class="row">
+      <div class="stripe ${z.острота === 'red' ? 'r' : 'o'}"></div>
+      <div>
+        <div class="who">${esc(z.person)}</div>
+        <div class="meta">${esc(z.unit)} · ст. ${esc(z.article)} · на учёте с ${esc(z.since)}</div>
+        <div class="marks">
+          <span class="chip ${z.острота === 'red' ? 'r' : 'o'}">${esc(z.catName)}</span>
+          <span class="chip ${z.reviewIn < 0 ? 'r' : z.reviewIn <= 14 ? 'o' : ''}">${
+            z.reviewIn < 0 ? 'пересмотр просрочен на ' + (-z.reviewIn) + ' дн.'
+              : 'пересмотр ' + esc(z.reviewDate)}</span>
+          <span class="chip ${z.talkDaysAgo > 30 ? 'o' : ''}">беседа ${esc(z.lastTalk)}</span>
+        </div>
+      </div>
+      <div>
+        <div class="sum">Закреплён: ${esc(z.owner)}</div>
+        <div class="why">Основание постановки: ${esc(z.basis)}</div>
+      </div>
+      <div class="acts">
+        <button class="btn sm" onclick="открытьДосье('${z.pid}')">Досье</button>
+        <button class="btn sm" onclick="открытьСнятие('${z.id}')">Снять с учёта</button>
+        <button class="btn sm primary" onclick="открытьБеседу('${z.id}')">Беседа</button>
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head head-row">
+      <div><h1>Профилактический учёт</h1>
+        <p>Постановка — по мотивированному рапорту, решение принимает комиссия учреждения.
+          Пересмотр каждые три месяца.</p></div>
+      <div class="head-acts">
+        <button class="btn" onclick="открытьКомиссию()">${ICON.reports} Материалы к комиссии</button>
+        <button class="btn primary" onclick="открытьРапорт()">Рапорт о постановке</button>
+      </div>
+    </div>
+
+    ${просроченные().length ? `<div class="note warn"><b>Просрочен пересмотр: ${просроченные().length}.</b>
+      Комиссия рассматривает каждого состоящего на учёте не реже чем раз в три месяца.
+      Просроченный пересмотр — первое, что смотрят при проверке.</div>` : ''}
+
+    <div class="bar">
+      <span class="lab">Показать:</span>
+      <div class="seg">
+        ${Object.keys(наборы).map(k => `<button class="${ф === k ? 'on' : ''}"
+          onclick="S.профФильтр='${k}'; render()">${esc(наборы[k][0])} · ${наборы[k][1].length}</button>`).join('')}
+      </div>
+    </div>
+
+    <h2 class="sect">По категориям</h2>
+    <div class="marks" style="margin-bottom:18px">
+      ${КАТЕГОРИИ.map(к => `<span class="chip ${к.острота === 'red' ? 'r' : 'o'}"
+        title="${esc(к.name)}">${esc(к.name.length > 46 ? к.name.slice(0, 44) + '…' : к.name)} · ${поКатегориям[к.id] || 0}</span>`).join('')}
+    </div>
+
+    <h2 class="sect">${esc(наборы[ф][0])} · ${список.length}</h2>
+    ${список.length ? `<div class="rows">${список.map(строка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Пусто</b><div>В этой выборке никого нет.</div></div>`}
+  `;
+}
+
+/* ---------- индивидуальная беседа ---------- */
+
+function открытьБеседу(id){
+  const z = ПРОФУЧЁТ.find(x => x.id === id); if (!z) return;
+  S.черновикБеседы = { мероприятие: МЕРОПРИЯТИЯ[0] };
+  modal(`
+    <div class="mh"><div><h3>Индивидуальная беседа</h3>
+      <div class="top-sub">${esc(z.person)} · ${esc(z.unit)} · ${esc(z.catName)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">На учёте с</div><div>${esc(z.since)}</div>
+        <div class="k">Последняя беседа</div><div>${esc(z.lastTalk)} — ${z.talkDaysAgo} дн. назад</div>
+        <div class="k">Закреплён</div><div>${esc(z.owner)}</div>
+      </div>
+
+      <h3 style="margin:18px 0 10px">Профилактическое мероприятие</h3>
+      ${МЕРОПРИЯТИЯ.map((м, n) => `
+        <label class="opt ${n === 0 ? 'on' : ''}" onclick="выбратьМероприятие(this, ${n})">
+          <b>${esc(м)}</b></label>`).join('')}
+
+      <label class="fld" style="margin-top:16px">Содержание беседы
+        <textarea id="talkNote" placeholder="О чём говорили, как держался, что обещал"></textarea></label>
+      <div class="note" style="margin-bottom:0">Запись беседы приобщается к материалам учёта
+        и докладывается комиссии при пересмотре.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="записатьБеседу('${z.id}')">Записать беседу</button>
+    </div>`);
+}
+
+function выбратьМероприятие(el, n){
+  S.черновикБеседы.мероприятие = МЕРОПРИЯТИЯ[n];
+  [...el.parentNode.querySelectorAll('.opt')].forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function записатьБеседу(id){
+  const z = ПРОФУЧЁТ.find(x => x.id === id); if (!z) return;
+  const поле = document.getElementById('talkNote');
+  z.lastTalk = '28.09.2026';
+  z.talkDaysAgo = 0;
+  z.lastTalkNote = (поле && поле.value.trim()) || 'Без записи';
+  z.lastMeasure = (S.черновикБеседы || {}).мероприятие || МЕРОПРИЯТИЯ[0];
+  closeModal(); render();
+  toast('Беседа записана. Приобщена к материалам учёта.');
+}
+
+/* ---------- снятие с учёта ---------- */
+
+function открытьСнятие(id){
+  const z = ПРОФУЧЁТ.find(x => x.id === id); if (!z) return;
+  const рано = z.daysOn < 90;
+  S.черновикСнятия = ОСНОВАНИЯ_СНЯТИЯ[0];
+  modal(`
+    <div class="mh"><div><h3>Снятие с профилактического учёта</h3>
+      <div class="top-sub">${esc(z.person)} · на учёте ${z.daysOn} дн.</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${рано ? `<div class="note warn" style="margin-top:0"><b>Прошло меньше трёх месяцев.</b>
+        По положительной характеристике снять можно не ранее чем через три месяца с постановки.
+        Остальные основания — освобождение, убытие, психодиагностика — действуют без этого срока.</div>` : ''}
+      <h3 style="margin:0 0 10px">Основание</h3>
+      ${ОСНОВАНИЯ_СНЯТИЯ.map((о, n) => `
+        <label class="opt ${n === 0 ? 'on' : ''}" onclick="выбратьСнятие(this, ${n})">
+          <b>${esc(о)}</b></label>`).join('')}
+      <div class="note">Решение о снятии принимает комиссия учреждения. Материал уйдёт
+        на ближайшее заседание вместе с результатами профилактической работы.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="внестиНаСнятие('${z.id}')">Внести на комиссию</button>
+    </div>`);
+}
+function выбратьСнятие(el, n){
+  S.черновикСнятия = ОСНОВАНИЯ_СНЯТИЯ[n];
+  [...el.parentNode.querySelectorAll('.opt')].forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+}
+function внестиНаСнятие(id){
+  const z = ПРОФУЧЁТ.find(x => x.id === id); if (!z) return;
+  z.toCommission = 'снятие: ' + (S.черновикСнятия || ОСНОВАНИЯ_СНЯТИЯ[0]);
+  closeModal(); render();
+  toast('Внесено на ближайшее заседание комиссии.');
+}
+
+/* ---------- материалы к комиссии ---------- */
+
+function открытьКомиссию(){
+  const пересмотр = просроченные().concat(скороПересмотр());
+  const снятие = ПРОФУЧЁТ.filter(z => z.toCommission);
+  const ф = ROL.facility || {};
+  modal(`
+    <div class="mh"><div><h3>Материалы к заседанию комиссии</h3>
+      <div class="top-sub">${esc(ф.short || 'ИК-5')} · председатель — начальник учреждения</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="print-sheet">
+        <div class="print-head">${esc(ф.full || '')}<br>
+          Материалы к заседанию комиссии по профилактике правонарушений</div>
+
+        <div class="print-body">
+          <b>1. Пересмотр состоящих на учёте — ${пересмотр.length}</b>
+          <ul class="plain">${пересмотр.slice(0, 12).map(z => `<li>${esc(z.person)}, ${esc(z.unit)} —
+            ${esc(z.catName)}. На учёте с ${esc(z.since)}. Последняя беседа ${esc(z.lastTalk)}.
+            ${z.reviewIn < 0 ? '<b>Пересмотр просрочен.</b>' : ''}</li>`).join('') || '<li>нет</li>'}</ul>
+
+          <b>2. Предложено к снятию — ${снятие.length}</b>
+          <ul class="plain">${снятие.map(z => `<li>${esc(z.person)}, ${esc(z.unit)} —
+            ${esc(z.toCommission)}</li>`).join('') || '<li>нет</li>'}</ul>
+        </div>
+
+        <div class="print-foot">Подготовил: оперативный сотрудник ${esc(профиль().name)}<br>
+          Решение принимается большинством голосов членов комиссии.</div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="doPrint()">${ICON.printer} Печать</button>
+    </div>`);
+}
+
+/* ---------- рапорт о постановке на учёт ---------- */
+
+function открытьРапорт(pid){
+  S.черновикРапорта = { pid: pid || '', cat: КАТЕГОРИИ[0].id };
+  показатьРапорт();
+}
+
+function показатьРапорт(){
+  const ч = S.черновикРапорта;
+  const p = ч.pid ? ROL.persons.find(x => x.id === ч.pid) : null;
+  const ф = ROL.facility || {};
+  modal(`
+    <div class="mh"><div><h3>Рапорт о постановке на профилактический учёт</h3>
+      <div class="top-sub">Мотивированный рапорт — основание для рассмотрения комиссией</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <label class="fld">Осуждённый
+        <input id="rapPerson" value="${esc(p ? p.name : '')}" placeholder="Начните вводить фамилию"
+          oninput="искатьДляРапорта(this.value)"></label>
+      <div id="rapFound" class="находки"></div>
+
+      <h3 style="margin:16px 0 10px">Категория учёта</h3>
+      <select class="search" style="max-width:none; width:100%" onchange="S.черновикРапорта.cat=this.value">
+        ${КАТЕГОРИИ.map(к => `<option value="${к.id}" ${ч.cat === к.id ? 'selected' : ''}>${esc(к.name)}</option>`).join('')}
+      </select>
+
+      <label class="fld" style="margin-top:16px">Что установлено
+        <textarea id="rapText" placeholder="Обстоятельства, на которых основан вывод"></textarea></label>
+
+      <div class="note">Рапорт вправе подать любой сотрудник, контактирующий с осуждёнными.
+        Решение о постановке принимает комиссия учреждения под председательством начальника.</div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="податьРапорт()">Подать рапорт</button>
+    </div>`);
+}
+
+function искатьДляРапорта(q){
+  const блок = document.getElementById('rapFound'); if (!блок) return;
+  const s = q.trim().toLowerCase();
+  if (s.length < 3) { блок.innerHTML = ''; return; }
+  const найдены = ROL.persons.filter(p => p.name.toLowerCase().includes(s)).slice(0, 6);
+  блок.innerHTML = найдены.map(p => `
+    <button class="находка" onclick="выбратьДляРапорта('${p.id}')">
+      <b>${esc(p.name)}</b><span>${esc(p.unit)} · ст. ${esc(p.article)}</span></button>`).join('');
+}
+
+function выбратьДляРапорта(id){
+  S.черновикРапорта.pid = id;
+  показатьРапорт();
+}
+
+function податьРапорт(){
+  const ч = S.черновикРапорта;
+  const p = ROL.persons.find(x => x.id === ч.pid);
+  if (!p) { toast('Выберите осуждённого'); return; }
+  const поле = document.getElementById('rapText');
+  const к = КАТЕГОРИИ.find(x => x.id === ч.cat);
+  ПРОФУЧЁТ.unshift({
+    id: 'пу' + Date.now().toString().slice(-6),
+    pid: p.id, person: p.name, unit: p.unit, article: p.article,
+    cat: к.id, catName: к.name, острота: к.острота,
+    since: '28.09.2026', daysOn: 0, reviewIn: 90, reviewDate: '27.12.2026',
+    lastTalk: '—', talkDaysAgo: 0,
+    owner: 'Петров А.С.',
+    basis: (поле && поле.value.trim()) || 'Мотивированный рапорт оперативного сотрудника',
+    toCommission: 'постановка на учёт',
+  });
+  closeModal(); go('prevention');
+  toast('Рапорт подан. Материал вынесен на ближайшее заседание комиссии.');
+}
+
+/* ============ СИГНАЛЫ СИСТЕМЫ — отдельным разделом ============ */
+
+function renderSignals(){
+  const f = S.feedFilter || 'attention';
+  const все = LIVE.events;
+  const список = f === 'all' ? все : все.filter(e => e.status === 'new');
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Сигналы системы</h1>
+      <p>То, что подняла автоматика по переписке и разговорам. Один из источников сведений.</p></div>
+    <div class="bar">
+      <div class="seg">
+        <button class="${f === 'attention' ? 'on' : ''}" onclick="S.feedFilter='attention'; render()">Требуют внимания · ${все.filter(e => e.status === 'new').length}</button>
+        <button class="${f === 'all' ? 'on' : ''}" onclick="S.feedFilter='all'; render()">Все · ${все.length}</button>
+      </div>
+    </div>
+    ${список.length ? `<div class="rows">${список.map(событиеHTML).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Сигналов нет</b></div>`}
+  `;
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -4658,6 +5192,9 @@ function render(){
     legal:       ['Нормативные акты', 'Документы, на которые ссылаются основания'],
     support:     ['Поддержка', 'Если что-то не работает'],
     feed:        ['Персональная лента', 'События, где нужен человек'],
+    situation:   ['Обстановка', 'Безопасность, предупреждение, розыск, содействие следствию'],
+    prevention:  ['Профилактический учёт', 'Состоящие на учёте, сроки пересмотра и беседы'],
+    signals:     ['Сигналы системы', 'Поднятое автоматикой по переписке и разговорам'],
     handed:      ['От цензора', 'Материалы, переданные на оперативное решение'],
     people:      ['Люди и связи', 'Досье и перечни контактов'],
     groups:      ['Группы и наблюдение', 'Автоматические и ручные подборки'],
@@ -4683,7 +5220,8 @@ function render(){
      staff:renderStaff, complaints:renderComplaints,
      live:renderLive, completed:renderCompleted,
      register:renderRegister, profile:renderProfile,
-     signing:renderSigning, handed:renderHanded })[S.view]();
+     signing:renderSigning, handed:renderHanded,
+     situation:renderSituation, prevention:renderPrevention, signals:renderSignals })[S.view]();
   window.scrollTo({top:0});
 }
 собратьОперативника();
