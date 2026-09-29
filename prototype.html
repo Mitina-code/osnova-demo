@@ -296,6 +296,12 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .seg.сборный{flex-wrap:wrap; height:auto; padding:6px}
 .seg.сборный button{white-space:normal; text-align:left; line-height:1.35; padding:7px 11px}
 
+/* Раскадровка: время, кадр, речь — тремя колонками, чтобы читалось построчно. */
+.кадры{display:grid; grid-template-columns:52px minmax(190px, 1fr) 1.4fr; gap:9px 14px; align-items:baseline}
+.кадры .t{color:var(--muted); font-size:13px}
+.кадр-что{color:var(--muted)}
+.кадр-речь{font-weight:500}
+
 /* ---------- зона скана заявления ---------- */
 .drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
   text-align:center; background:var(--bg); margin-bottom:16px}
@@ -709,7 +715,8 @@ function fromContract(m) {
     text: m.content ? m.content.text : null,
     ts,
     tr: переведено || null,
-    frames: (m.content && m.content.frames) ? m.content.frames.map(x => [x.t, x.d]) : null,
+    /* [время, что в кадре, что звучит] — кадр и фраза смотрятся вместе. */
+    frames: (m.content && m.content.frames) ? m.content.frames.map(x => [x.t, x.d, x.s || '']) : null,
     hl: a.hl || [],
     hlts,
     sample: !!m.sample,
@@ -1280,7 +1287,13 @@ function renderCard(){
       x.ts.map(([t,s],i)=>`<div class="t">${t}</div><div>${(x.hlts||[]).includes(i)?`<mark${x.risk==='red'?' class="r"':''}>${esc(s)}</mark>`:esc(s)}</div>`).join('')
     }</div>${x.tr?`<div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line2)"><div class="top-sub" style="margin-bottom:4px">Перевод (оригинал сохранён)</div>${esc(x.tr)}</div>`:''}</div>`;
   }
-  const framesHTML = x.frames ? `<div class="card"><h3>Раскадровка</h3><div class="ts">${x.frames.map(([t,d])=>`<div class="t">${t}</div><div>${esc(d)}</div>`).join('')}</div></div>` : '';
+  const framesHTML = x.frames ? `<div class="card"><h3>Раскадровка</h3>
+    <div class="top-sub" style="margin:-4px 0 12px">Кадр каждые пять секунд и фраза, которая звучит
+      в этот момент. Прочерк — говорящий молчит.</div>
+    <div class="кадры">${x.frames.map(([t, d, s]) => `
+      <div class="t tnum">${t}</div>
+      <div class="кадр-что">${esc(d)}</div>
+      <div class="кадр-речь">${s ? esc(s) : ''}</div>`).join('')}</div></div>` : '';
 
   document.getElementById('content').innerHTML = `
     ${inConv?`<div class="progress"><span>Разбор подряд · ${pos} из ${S.conveyor.length}</span><span class="pbar"><i style="width:${Math.round(pos/S.conveyor.length*100)}%"></i></span></div>`:''}
