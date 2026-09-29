@@ -435,7 +435,11 @@ h2.sect{font-size:21px; font-weight:700; margin:30px 0 14px; letter-spacing:-.3p
    Оформление по ГОСТ Р 7.0.97-2016. На экране это предпросмотр,
    на бумаге — готовый к подписи документ: один акт = один лист. */
 .бланк{
-  background:#fff; color:#000; font-size:13.5px; line-height:1.5;
+  /* Times New Roman — то, чем набирают служебные документы. На экране бланк
+     выглядит так же, как выйдет из принтера, и это не украшение: сотрудник
+     должен видеть будущий документ, а не его приблизительный вид. */
+  font-family:"Times New Roman", Times, serif;
+  background:#fff; color:#000; font-size:14.5px; line-height:1.5;
   padding:26px 28px; border:1px solid var(--border); border-radius:12px;
 }
 .бланк + .бланк{margin-top:16px}
@@ -503,7 +507,8 @@ a.btn{text-decoration:none}
   #printRoot h3{margin:10px 0 6px}
   #printRoot tr, #printRoot .row, #printRoot .entry,
   #printRoot .card, #printRoot .glue-row{break-inside:avoid}
-  #printRoot .бланк{border:0; border-radius:0; padding:0; font-size:11pt; break-after:page}
+  #printRoot{font-family:"Times New Roman", Times, serif}
+  #printRoot .бланк{border:0; border-radius:0; padding:0; font-size:12pt; break-after:page}
   #printRoot .бланк.последний{break-after:auto}
   #printRoot .бланк + .бланк{margin-top:0}
   #printRoot .бл-таб{font-size:8.5pt}
@@ -758,6 +763,8 @@ const S = {
   сортировкаЛюдей:'default', фильтрЛюдей:'all',
   вкладкаЛюдей:'card',       // картотека или входящие
   видДокумента:'all',        // фильтр на экране подписи
+  вкладкаДосье:'main',       // раздел внутри досье
+  записьТекст:'',
   вкладкаПоручений:'issued', // выданные или полученные
   электронныеОбращения:true, // приём через терминал и ЛК родственника
   ио:null,                   // исполняющий обязанности: кто и на какие даты
@@ -2226,6 +2233,8 @@ function человекHTML(p){
           : ''; })()}
         ${(() => { const кр = сигналыЧеловека(p.id).красные.length;
           return кр ? `<span class="chip r" title="Красные сигналы за три месяца">красных сигналов: ${кр}</span>` : ''; })()}
+        ${(() => { const д = действующиеВзыскания(p.id).length;
+          return д ? `<span class="chip r" title="Действующие взыскания за нарушения установленного порядка">действующих взысканий: ${д}</span>` : ''; })()}
         ${p.confirmed ? '' : '<span class="chip o" title="Личность не подтверждена: доступна только текстовая переписка">только переписка</span>'}
         ${меткаРазрешения(p.id)}
         ${неподтв ? `<span class="chip o">не подтверждено: ${неподтв}</span>` : ''}
@@ -2237,85 +2246,6 @@ function человекHTML(p){
     </div>
     <div class="acts"><button class="btn sm primary" onclick="открытьДосье('${p.id}')">Досье</button></div>
   </div>`;
-}
-
-function открытьДосье(id){
-  const p = ROL.persons.find(x => x.id === id); if (!p) return;
-  modal(`
-    <div class="mh"><div><h3>${esc(p.name)}</h3>
-      <div class="top-sub">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(местоЧеловека(p))} · ${esc(У().name)}</div></div>
-      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
-    <div class="mb">
-      <div class="kv">
-        <div class="k">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}</div><div>${esc(местоЧеловека(p))}</div>
-        <div class="k">Личность</div>
-        <div>${p.confirmed
-          ? '<span class="chip g">подтверждена</span> доступны звонки и сообщения'
-          : '<span class="chip o">не подтверждена</span> доступна только текстовая переписка'}</div>
-        <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
-        <div class="k">Активность</div><div>${esc(активностьЧеловека(p))}</div>
-        <div class="k">Статья</div><div>${esc(p.article)}</div>
-        <div class="k">В учреждении с</div><div>${esc(p.since)}</div>
-
-      </div>
-
-      ${(() => { const мат = вДосье(p.id); return мат.length ? `
-        <h3 style="margin:22px 0 10px; font-size:16px">Приобщено к досье · ${мат.length}</h3>
-        <div class="note" style="margin-top:0">Материалы, которые оперативный сотрудник оставил
-          в досье при разборе переданного цензором.</div>
-        <div class="clist" style="margin-top:12px">${мат.map(м => `
-          <div class="citem"><div>
-            <div class="w">${esc(м.id)} · ${esc(м.решение)}</div>
-            <div class="s">${esc(м.резюме)}</div>
-            ${м.записка ? `<div class="s" style="margin-top:4px">Цензор: «${esc(м.записка)}»</div>` : ''}
-            <div class="s" style="margin-top:4px">${esc(м.by)}, ${esc(м.at)}${м.дело ? ' · дело ' + esc(м.дело) : ''}</div>
-          </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${м.id}')">Открыть</button></div>`).join('')}</div>` : ''; })()}
-
-      ${блокОпасныхСвязей(p)}
-
-      ${блокСигналов(p.id)}
-
-      ${блокУчётаВДосье(p.id)}
-
-      ${блокСоучастников(p.id)}
-
-      <h3 style="margin:22px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
-      ${p.contacts.length ? '' : `<div class="note warn" style="margin-top:0">Перечень контактов не заведён.
-        Связь возможна только бумажной перепиской — звонков и сообщений у этого человека нет.</div>`}
-      <div class="clist">
-        ${p.contacts.map((c, i) => контактHTML(p.id, i, c)).join('')}
-      </div>
-      <div class="note" style="margin-top:14px">Отключение канала — это ограничение доступности контакта в ОСНОВЕ,
-        а не правка заявления заключённого. Основание и срок сохраняются в журнале.</div>
-
-      ${(() => { const св = связиЧеловека(p); return св.length ? `
-        <h3 style="margin:22px 0 10px; font-size:16px">Связи с другими людьми · ${св.length}</h3>
-        <div class="note warn" style="margin-top:0">Один и тот же внешний контакт встречается у нескольких человек.
-          Это основной признак для проверки — родство подтверждено не у всех.</div>
-        <div class="clist" style="margin-top:12px">${св.map(x => `
-          <div class="citem"><div>
-            <div class="w">${esc(x.контакт.name)} · ${esc(x.контакт.phone)}</div>
-            <div class="s">заявлен как «${esc(x.контакт.role)}» · встречается ещё у ${x.люди.length}:</div>
-            <div class="marks" style="margin-top:8px">${x.люди.map(o =>
-              `<button class="chip ${RISK_LETTER[o.risk]}" onclick="открытьДосье('${o.id}')">${esc(o.name)}</button>`).join('')}</div>
-          </div></div>`).join('')}</div>` : ''; })()}
-
-      ${(() => { const ист = историяЧеловека(p); return `
-        <h3 style="margin:22px 0 10px; font-size:16px">Коммуникации за смену · ${ист.length}</h3>
-        ${ист.length ? `<div class="clist">${ист.map(m => `
-          <div class="citem"><div>
-            <div class="w"><span class="chip ${RISK_LETTER[m.risk]}">${RISK_ONE[m.risk]}</span> ${esc(m.from)} → ${esc(m.to)}</div>
-            <div class="s">${m.id} · ${m.at} · ${esc(m.kindLabel)} · ${esc(m.sum)}</div>
-          </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${m.id}')">Открыть</button></div>`).join('')}</div>`
-          : '<div class="top-sub">За эту смену материалов этого человека нет.</div>'}`; })()}
-    </div>
-    <div class="mf">
-      <button class="btn" onclick="открытьШкалу('${p.id}')">Временная шкала</button>
-      <button class="btn" onclick="открытьГраф('${p.id}')">Связи</button>
-      <button class="btn" onclick="вСвоюГруппу('${p.id}')">В свою группу</button>
-      <button class="btn" onclick="closeModal(); открытьРапорт('${p.id}')">Рапорт на учёт</button>
-      <button class="btn primary" onclick="добавитьВГруппу('${p.id}')">В системную группу</button>
-    </div>`);
 }
 
 function контактHTML(pid, i, c){
@@ -7128,6 +7058,439 @@ function снятьИО(){
   S.ио = null;
   toast('Исполняющий обязанности снят, доступ закрыт');
   render();
+}
+
+/* ================== ДОСЬЕ КАК НАКОПИТЕЛЬ ==================
+
+   Досье ведётся годами и должно отвечать на вопрос «что известно про этого
+   человека» целиком, без похода по отделам. Поэтому оно разложено по
+   разделам, а не вытянуто в одну простыню: главное, нарушения, связи,
+   переписка, записи.
+
+   Печать — отдельным действием и сразу вся: разово собрать на человека
+   всё, включая нарушения, а не печатать по кусочку.
+*/
+
+/* Компактная выгрузка разворачивается один раз при загрузке. */
+const НАРУШЕНИЯ = (ROL.violations || []).map(
+  ([id, pid, at, суть, тяжесть, кем, мера, норма, срок, постановление, погашено]) =>
+  ({ id, pid, at, суть, тяжесть, кем, мера, норма, срок, постановление, погашено: !!погашено }));
+
+const ПООЩРЕНИЯ = (ROL.rewards || []).map(
+  ([id, pid, at, мера, норма, основание, постановление]) =>
+  ({ id, pid, at, мера, норма, основание, постановление }));
+
+const ЗАПИСИ_ДОСЬЕ = (ROL.dossierNotes || []).map(
+  ([id, pid, at, text, by]) => ({ id, pid, at, text, by }));
+
+/* Индексы: иначе на 2400 человек каждый показ досье перебирает тысячи записей. */
+const ПО_ЧЕЛОВЕКУ = (список) => {
+  const карта = {};
+  список.forEach(з => { (карта[з.pid] = карта[з.pid] || []).push(з); });
+  return карта;
+};
+const НАРУШЕНИЯ_ПО = ПО_ЧЕЛОВЕКУ(НАРУШЕНИЯ);
+const ПООЩРЕНИЯ_ПО = ПО_ЧЕЛОВЕКУ(ПООЩРЕНИЯ);
+const ЗАПИСИ_ПО = ПО_ЧЕЛОВЕКУ(ЗАПИСИ_ДОСЬЕ);
+
+function нарушенияЧеловека(pid){ return НАРУШЕНИЯ_ПО[pid] || []; }
+function поощренияЧеловека(pid){ return ПООЩРЕНИЯ_ПО[pid] || []; }
+function записиЧеловека(pid){ return ЗАПИСИ_ПО[pid] || []; }
+
+function действующиеВзыскания(pid){
+  return нарушенияЧеловека(pid).filter(н => !н.погашено);
+}
+
+/* Меры взыскания в колонии и в следственном изоляторе разные: перевода
+   в ПКТ и ЕПКТ в изоляторе не бывает. Поэтому мера подбирается под режим
+   учреждения по тяжести нарушения, а не берётся как есть.
+     колония — ст. 115 УИК РФ;
+     изолятор — ст. 39 и 40 ФЗ-103. */
+function мераПоРежиму(н){
+  if (S.facility !== 'сизо') return { мера: н.мера, норма: н.норма, срок: н.срок };
+  return н.тяжесть === 1
+    ? { мера: 'выговор', норма: 'ст. 39 ФЗ-103', срок: null }
+    : { мера: 'водворение в карцер', норма: 'ст. 40 ФЗ-103', срок: 'до 15 суток' };
+}
+
+const ТЯЖЕСТЬ_СЛОВО = { 1: 'мелкое', 2: 'существенное', 3: 'злостное' };
+const ТЯЖЕСТЬ_ЦВЕТ = { 1: '', 2: 'o', 3: 'r' };
+
+/* ---------- рабочие записи ---------- */
+
+let НОМЕР_ЗАПИСИ = 9000;
+
+function добавитьЗапись(pid){
+  const p = POP.поId[pid]; if (!p) return;
+  const шаблоны = ROL.noteTemplates || [];
+  S.записьТекст = '';
+  modal(`
+    <div class="mh"><div><h3>Запись в досье</h3>
+      <div class="top-sub">${esc(p.name)} · ${esc(местоЧеловека(p))}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note" style="margin-top:0">Запись остаётся в досье навсегда с датой и вашей
+        фамилией. Она не заменяет рапорт и не влечёт последствий сама по себе — это то,
+        что сегодня живёт в тетрадке и пропадает вместе с ней.</div>
+
+      <label class="fld">Что записать</label>
+      <div class="seg сборный" style="margin-bottom:10px">
+        ${шаблоны.map(т => `<button onclick="записьШаблон(this, '${esc(т)}')">${esc(т)}</button>`).join('')}
+      </div>
+      <label class="fld">Или своими словами<input id="записьТекст" placeholder="Текст записи"></label>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьЗапись('${pid}')">Записать</button>
+    </div>`);
+}
+
+function записьШаблон(кнопка, текст){
+  [...кнопка.parentNode.children].forEach(б => б.classList.remove('on'));
+  кнопка.classList.add('on');
+  S.записьТекст = текст;
+  const поле = document.getElementById('записьТекст');
+  if (поле) поле.value = текст;
+}
+
+function сохранитьЗапись(pid){
+  const текст = ((document.getElementById('записьТекст') || {}).value || S.записьТекст || '').trim();
+  if (!текст) { toast('Запись пустая'); return; }
+  const з = { id: 'З-' + (++НОМЕР_ЗАПИСИ), pid, at: сегодняДок(),
+              text: текст, by: профиль().name + ', ' + профиль().post, свежая: true };
+  ЗАПИСИ_ДОСЬЕ.unshift(з);
+  (ЗАПИСИ_ПО[pid] = ЗАПИСИ_ПО[pid] || []).unshift(з);
+  closeModal();
+  toast('Записано в досье');
+  открытьДосье(pid, 'notes');
+}
+
+/* ---------- разделы досье ---------- */
+
+function блокНарушений(p, дляПечати){
+  const нар = нарушенияЧеловека(p.id);
+  const действ = нар.filter(н => !н.погашено);
+  if (!нар.length) {
+    return дляПечати ? '<p class="бл-абз">Нарушений установленного порядка не зафиксировано.</p>'
+      : '<div class="note" style="margin-top:0">Нарушений установленного порядка не зафиксировано.</div>';
+  }
+  if (дляПечати) {
+    return `
+      <table class="бл-таб">
+        <colgroup><col style="width:4%"><col style="width:9%"><col style="width:30%">
+          <col style="width:17%"><col style="width:17%"><col style="width:12%"><col style="width:11%"></colgroup>
+        <tr><th>№</th><th>Дата</th><th>Существо нарушения</th><th>Кем выявлено</th>
+          <th>Мера взыскания</th><th>Основание</th><th>Состояние</th></tr>
+        ${нар.map((н, i) => `<tr>
+          <td>${i + 1}</td><td>${esc(н.at)}</td><td>${esc(н.суть)}</td>
+          <td>${esc(н.кем)}</td>
+          ${(() => { const м = мераПоРежиму(н); return `
+            <td>${esc(м.мера)}${м.срок ? ', ' + esc(м.срок) : ''}</td>
+            <td>${esc(м.норма)}<br>пост. № ${esc(н.постановление)}</td>`; })()}
+          <td>${н.погашено ? 'погашено' : 'действует'}</td>
+        </tr>`).join('')}
+      </table>
+      <p class="бл-абз">Всего нарушений: ${нар.length}, из них взысканий действующих: ${действ.length}.</p>`;
+  }
+  return `
+    ${действ.length ? `<div class="note warn" style="margin-top:0">
+      <b>Действующих взысканий: ${действ.length}</b> из ${нар.length}
+      ${plural(нар.length, 'нарушения', 'нарушений', 'нарушений')} за год.
+      Взыскание погашается, если в течение года со дня отбытия не наложено новое — ст. 117 УИК РФ.</div>`
+      : `<div class="note" style="margin-top:0">Все взыскания погашены. Всего нарушений за год: ${нар.length}.</div>`}
+    <div class="clist" style="margin-top:12px">
+      ${нар.map(н => `
+        <div class="citem"><div>
+          <div class="w">${esc(н.суть)}
+            <span class="chip ${ТЯЖЕСТЬ_ЦВЕТ[н.тяжесть]}">${ТЯЖЕСТЬ_СЛОВО[н.тяжесть]}</span>
+            ${н.погашено ? '<span class="chip">погашено</span>' : '<span class="chip r">действует</span>'}</div>
+          <div class="s">${esc(н.at)} · выявил ${esc(н.кем)}</div>
+          ${(() => { const м = мераПоРежиму(н); return `
+            <div class="s" style="margin-top:4px">Взыскание: ${esc(м.мера)}${м.срок ? ', ' + esc(м.срок) : ''}
+              · ${esc(м.норма)} · постановление № ${esc(н.постановление)}</div>`; })()}
+        </div></div>`).join('')}
+    </div>`;
+}
+
+function блокПоощрений(p, дляПечати){
+  const пощ = поощренияЧеловека(p.id);
+  if (!пощ.length) {
+    return дляПечати ? '<p class="бл-абз">Поощрений не применялось.</p>' : '';
+  }
+  if (дляПечати) {
+    return `
+      <table class="бл-таб">
+        <colgroup><col style="width:5%"><col style="width:12%"><col style="width:35%">
+          <col style="width:30%"><col style="width:18%"></colgroup>
+        <tr><th>№</th><th>Дата</th><th>Мера поощрения</th><th>Основание</th><th>Документ</th></tr>
+        ${пощ.map((з, i) => `<tr><td>${i + 1}</td><td>${esc(з.at)}</td>
+          <td>${esc(з.мера)}</td><td>${esc(з.основание)}</td>
+          <td>${esc(з.норма)}<br>пост. № ${esc(з.постановление)}</td></tr>`).join('')}
+      </table>`;
+  }
+  return `
+    <h3 style="margin:22px 0 10px; font-size:16px">Поощрения · ${пощ.length}</h3>
+    <div class="clist">
+      ${пощ.map(з => `
+        <div class="citem"><div>
+          <div class="w">${esc(з.мера)}</div>
+          <div class="s">${esc(з.at)} · за ${esc(з.основание)}</div>
+          <div class="s" style="margin-top:4px">${esc(з.норма)} · постановление № ${esc(з.постановление)}</div>
+        </div></div>`).join('')}
+    </div>`;
+}
+
+function блокЗаписей(p, дляПечати){
+  const зап = записиЧеловека(p.id);
+  if (дляПечати) {
+    return зап.length
+      ? `<table class="бл-таб">
+          <colgroup><col style="width:5%"><col style="width:12%"><col style="width:50%"><col style="width:33%"></colgroup>
+          <tr><th>№</th><th>Дата</th><th>Содержание</th><th>Кто внёс</th></tr>
+          ${зап.map((з, i) => `<tr><td>${i + 1}</td><td>${esc(з.at)}</td>
+            <td>${esc(з.text)}</td><td>${esc(з.by)}</td></tr>`).join('')}
+        </table>`
+      : '<p class="бл-абз">Рабочих записей не вносилось.</p>';
+  }
+  return `
+    <div class="bar" style="margin-top:0">
+      <button class="btn" onclick="добавитьЗапись('${p.id}')">Добавить запись</button>
+      <span class="lab">записей: ${зап.length}</span>
+    </div>
+    ${зап.length ? `<div class="clist">
+      ${зап.map(з => `
+        <div class="citem"><div>
+          <div class="w">${esc(з.text)} ${з.свежая ? '<span class="chip g">только что</span>' : ''}</div>
+          <div class="s">${esc(з.at)} · ${esc(з.by)}</div>
+        </div></div>`).join('')}</div>`
+      : `<div class="empty"><b>Записей нет</b>
+         <div>Здесь копится то, что сегодня живёт в тетрадке: беседы, проверки, наблюдения.</div></div>`}`;
+}
+
+/* ---------- печать досье ----------
+
+   Один документ на человека, со всеми нарушениями сразу. Оформление —
+   как у прочих документов учреждения: реквизиты по ГОСТ Р 7.0.97-2016,
+   Times New Roman.
+*/
+function печатьДосье(pid){
+  const p = POP.поId[pid]; if (!p) return;
+  const ф = У();
+  const с = сигналыЧеловека(p.id);
+  const св = опасныеСвязи(p);
+  const учёт = ПРОФУЧЁТ.filter(z => !z.removed && z.pid === p.id);
+  const дела = ДЕЛА.filter(d => d.pid === p.id);
+  const мат = вДосье(p.id);
+  const строка = (к, з) => `<div class="бл-к">${esc(к)}</div><div class="бл-з">${esc(з)}</div>`;
+  const раздел = (n, имя) => `<div class="бл-подзаг">${n}. ${имя}</div>`;
+
+  печатьДокумента(`
+    <div class="бланк последний">
+      <div class="бл-верх">
+        <div class="бл-орг">
+          ФЕДЕРАЛЬНАЯ СЛУЖБА ИСПОЛНЕНИЯ НАКАЗАНИЙ<br>
+          ${esc(ф.parent || '')}<br>${esc(ф.full || '')}<br>(${esc(ф.short || '')})
+        </div>
+      </div>
+
+      <div class="бл-вид">СПРАВКА</div>
+
+      <div class="бл-рек">
+        <span>${esc(сегодняДок())}</span>
+        <span>№ ДС-${esc(String(p.id).replace(/\D/g, ''))}</span>
+      </div>
+      <div class="бл-место">${esc(ф.city || '')}</div>
+
+      <div class="бл-загол">о лице, содержащемся в ${esc(ф.short || 'учреждении')}:<br>
+        ${esc(p.name)}, ${esc(p.dob)} года рождения</div>
+
+      ${раздел(1, 'Установочные данные')}
+      <div class="бл-свед">
+        ${строка('Фамилия, имя, отчество', p.name)}
+        ${строка('Дата рождения', p.dob)}
+        ${строка('Гражданство', p.citizenship)}
+        ${строка('Статья', p.article)}
+        ${строка(S.facility === 'сизо' ? 'Камера' : 'Отряд', местоЧеловека(p))}
+        ${строка('В учреждении с', p.since)}
+        ${строка('Личность', p.confirmed
+          ? 'установлена, доступны все виды связи'
+          : 'не подтверждена, доступна только текстовая переписка')}
+      </div>
+
+      ${раздел(2, 'Оперативная обстановка')}
+      <div class="бл-свед">
+        ${строка('Уровень внимания по данным анализатора', p.riskText)}
+        ${строка('Красных сигналов за три месяца', String(с.красные.length))}
+        ${строка('Недопусков за три месяца', String(с.недопуски.length))}
+        ${строка('Изъятий фрагментов за три месяца', String(с.вымарано.length))}
+        ${строка('Общих контактов с другими лицами', String(св.общие))}
+        ${св.соучастники ? строка('Связь через посредника с соучастниками', String(св.соучастники)) : ''}
+        ${строка('Контактов в перечне', String(p.contacts.length))}
+        ${строка('Из них не подтверждено', String(p.contacts.filter(c => !c.verified).length))}
+      </div>
+
+      ${раздел(3, 'Профилактический учёт и дела')}
+      ${учёт.length
+        ? `<div class="бл-свед">${учёт.map(z =>
+            строка(z.catName, 'на учёте с ' + z.since + ', закреплён ' + z.owner)).join('')}</div>`
+        : '<p class="бл-абз">На профилактическом учёте не состоит.</p>'}
+      ${дела.length
+        ? `<div class="бл-свед">${дела.map(d =>
+            строка('Дело № ' + d.no, d.title + ', открыто ' + d.opened)).join('')}</div>`
+        : '<p class="бл-абз">Дел оперативного учёта не заведено.</p>'}
+
+      ${раздел(4, 'Нарушения установленного порядка и взыскания')}
+      ${блокНарушений(p, true)}
+
+      ${раздел(5, 'Поощрения')}
+      ${блокПоощрений(p, true)}
+
+      ${раздел(6, 'Материалы, приобщённые к досье')}
+      ${мат.length
+        ? `<table class="бл-таб">
+            <colgroup><col style="width:5%"><col style="width:14%"><col style="width:16%">
+              <col style="width:40%"><col style="width:25%"></colgroup>
+            <tr><th>№</th><th>Материал</th><th>Решение</th><th>Существо</th><th>Кто приобщил</th></tr>
+            ${мат.map((м, i) => `<tr><td>${i + 1}</td><td>${esc(м.id)}</td>
+              <td>${esc(м.решение)}</td><td>${esc(м.резюме)}</td>
+              <td>${esc(м.by)}, ${esc(м.at)}</td></tr>`).join('')}
+          </table>`
+        : '<p class="бл-абз">Материалы к досье не приобщались.</p>'}
+
+      ${раздел(7, 'Рабочие записи')}
+      ${блокЗаписей(p, true)}
+
+      <p class="бл-абз" style="margin-top:18px">Справка составлена по данным
+        информационной системы на ${esc(сегодняДок())}.</p>
+
+      <div class="бл-подписи">
+        <div class="бл-подпись">
+          <span class="бл-кто">${esc(профиль().post.charAt(0).toUpperCase() + профиль().post.slice(1))}
+            ${esc(ф.short || '')}</span>
+          <span class="бл-линия"></span>
+          <span class="бл-имя">${esc(инициалы(профиль().name))}</span>
+        </div>
+        <div class="бл-дата">«____» ____________ 2026 г.</div>
+      </div>
+    </div>`);
+}
+
+/* ---------- само досье ---------- */
+
+const ВКЛАДКИ_ДОСЬЕ = [
+  ['main', 'Главное'],
+  ['violations', 'Нарушения'],
+  ['links', 'Связи'],
+  ['comms', 'Переписка'],
+  ['notes', 'Записи'],
+];
+
+function открытьДосье(id, вкладка){
+  const p = ROL.persons.find(x => x.id === id); if (!p) return;
+  S.вкладкаДосье = вкладка || S.вкладкаДосье || 'main';
+  const в = S.вкладкаДосье;
+  const нар = нарушенияЧеловека(p.id);
+  const действ = действующиеВзыскания(p.id);
+
+  const счёт = { main: '', violations: нар.length ? ' · ' + нар.length : '',
+    links: ' · ' + p.contacts.length, comms: '', notes: ' · ' + записиЧеловека(p.id).length };
+
+  modal(`
+    <div class="mh"><div><h3>${esc(p.name)}</h3>
+      <div class="top-sub">${esc(p.dob)} · ${esc(p.citizenship)} · ${esc(местоЧеловека(p))} · ${esc(У().name)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="bar" style="margin-top:0">
+        <div class="seg">
+          ${ВКЛАДКИ_ДОСЬЕ.map(([к, имя]) =>
+            `<button class="${в === к ? 'on' : ''}" onclick="открытьДосье('${p.id}','${к}')">${имя}${счёт[к]}</button>`).join('')}
+        </div>
+      </div>
+
+      ${действ.length ? `<div class="note warn"><b>Действующих взысканий: ${действ.length}.</b>
+        Последнее — ${esc(мераПоРежиму(действ[0]).мера)} от ${esc(действ[0].at)} за ${esc(действ[0].суть)}.</div>` : ''}
+
+      ${в === 'main' ? `
+        <div class="kv">
+          <div class="k">${S.facility === 'сизо' ? 'Камера' : 'Отряд'}</div><div>${esc(местоЧеловека(p))}</div>
+          <div class="k">Статья</div><div>${esc(p.article)}</div>
+          <div class="k">В учреждении с</div><div>${esc(p.since)}</div>
+          <div class="k">Личность</div>
+          <div>${p.confirmed
+            ? '<span class="chip g">подтверждена</span> доступны звонки и сообщения'
+            : '<span class="chip o">не подтверждена</span> доступна только текстовая переписка'}</div>
+          <div class="k">Уровень внимания</div><div><span class="chip ${RISK_LETTER[p.risk]}">${esc(p.riskText)}</span></div>
+          <div class="k">Обстановка</div><div>${esc(активностьЧеловека(p))}</div>
+          <div class="k">Нарушений за год</div>
+          <div>${нар.length}${действ.length ? ` · <span class="chip r">действующих взысканий: ${действ.length}</span>` : ' · взысканий не действует'}</div>
+          <div class="k">Поощрений</div><div>${поощренияЧеловека(p.id).length}</div>
+        </div>
+
+        ${блокОпасныхСвязей(p)}
+        ${блокСигналов(p.id)}
+        ${блокУчётаВДосье(p.id)}
+        ${блокСоучастников(p.id)}
+
+        ${(() => { const мат = вДосье(p.id); return мат.length ? `
+          <h3 style="margin:22px 0 10px; font-size:16px">Приобщено к досье · ${мат.length}</h3>
+          <div class="clist">${мат.map(м => `
+            <div class="citem"><div>
+              <div class="w">${esc(м.id)} · ${esc(м.решение)}</div>
+              <div class="s">${esc(м.резюме)}</div>
+              ${м.записка ? `<div class="s" style="margin-top:4px">Цензор: «${esc(м.записка)}»</div>` : ''}
+              <div class="s" style="margin-top:4px">${esc(м.by)}, ${esc(м.at)}${м.дело ? ' · дело ' + esc(м.дело) : ''}</div>
+            </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${м.id}')">Открыть</button></div>`).join('')}</div>` : ''; })()}
+      ` : ''}
+
+      ${в === 'violations' ? `
+        <h3 style="margin:18px 0 10px; font-size:16px">Нарушения установленного порядка · ${нар.length}</h3>
+        ${блокНарушений(p, false)}
+        ${блокПоощрений(p, false)}
+      ` : ''}
+
+      ${в === 'links' ? `
+        <h3 style="margin:18px 0 10px; font-size:16px">Контакты · ${p.contacts.length}</h3>
+        ${p.contacts.length ? '' : `<div class="note warn" style="margin-top:0">Перечень контактов не заведён.
+          Связь возможна только бумажной перепиской — звонков и сообщений у этого человека нет.</div>`}
+        <div class="clist">${p.contacts.map((c, i) => контактHTML(p.id, i, c)).join('')}</div>
+        <div class="note" style="margin-top:14px">Отключение канала — это ограничение доступности контакта
+          в ОСНОВЕ, а не правка заявления заключённого. Основание и срок сохраняются в журнале.</div>
+
+        ${(() => { const связи = связиЧеловека(p); return связи.length ? `
+          <h3 style="margin:22px 0 10px; font-size:16px">Связи с другими людьми · ${связи.length}</h3>
+          <div class="note warn" style="margin-top:0">Один и тот же внешний контакт встречается
+            у нескольких человек. Это основной признак для проверки — родство подтверждено не у всех.</div>
+          <div class="clist" style="margin-top:12px">${связи.map(x => `
+            <div class="citem"><div>
+              <div class="w">${esc(x.контакт.name)} · ${esc(x.контакт.phone)}</div>
+              <div class="s">заявлен как «${esc(x.контакт.role)}» · встречается ещё у ${x.люди.length}:</div>
+              <div class="marks" style="margin-top:8px">${x.люди.map(o =>
+                `<button class="chip ${RISK_LETTER[o.risk]}" onclick="открытьДосье('${o.id}')">${esc(o.name)}</button>`).join('')}</div>
+            </div></div>`).join('')}</div>` : ''; })()}
+      ` : ''}
+
+      ${в === 'comms' ? `
+        ${блокСигналов(p.id)}
+        ${(() => { const ист = историяЧеловека(p); return `
+          <h3 style="margin:22px 0 10px; font-size:16px">Коммуникации за смену · ${ист.length}</h3>
+          ${ист.length ? `<div class="clist">${ист.map(m => `
+            <div class="citem"><div>
+              <div class="w"><span class="chip ${RISK_LETTER[m.risk]}">${RISK_ONE[m.risk]}</span> ${esc(m.from)} → ${esc(m.to)}</div>
+              <div class="s">${m.id} · ${m.at} · ${esc(m.kindLabel)} · ${esc(m.sum)}</div>
+            </div><button class="btn sm" onclick="closeModal(); открытьМатериал('${m.id}')">Открыть</button></div>`).join('')}</div>`
+            : '<div class="top-sub">За эту смену материалов этого человека нет.</div>'}`; })()}
+      ` : ''}
+
+      ${в === 'notes' ? блокЗаписей(p, false) : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="печатьДосье('${p.id}')">${ICON.printer} Печать досье</button>
+      <button class="btn" onclick="добавитьЗапись('${p.id}')">Запись</button>
+      <button class="btn" onclick="открытьШкалу('${p.id}')">Шкала</button>
+      <button class="btn" onclick="открытьГраф('${p.id}')">Связи</button>
+      <button class="btn" onclick="closeModal(); открытьРапорт('${p.id}')">Рапорт на учёт</button>
+      <button class="btn primary" onclick="вСвоюГруппу('${p.id}')">В свою группу</button>
+    </div>`);
 }
 
 /* ---------------- маршрутизация ---------------- */
