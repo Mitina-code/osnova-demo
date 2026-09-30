@@ -314,6 +314,31 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
   .кадр figcaption{font-size:7.5pt}
 }
 
+
+/* Набор разделов — крупная строка с галочкой: попасть в неё легко,
+   и видно, что именно внутри набора. */
+.набор{display:grid; grid-template-columns:22px 1fr; gap:12px; align-items:start;
+  border:1.5px solid var(--border); border-radius:14px; padding:14px 16px;
+  margin-bottom:10px; cursor:pointer; background:var(--card, #fff)}
+.набор:hover{border-color:var(--primary)}
+.набор.вкл{border-color:var(--primary); background:var(--lilac)}
+.набор.нельзя{opacity:.62; cursor:not-allowed}
+.набор.нельзя:hover{border-color:var(--border)}
+.набор input{width:19px; height:19px; margin-top:2px; accent-color:var(--primary)}
+.набор-суть{color:var(--muted); font-size:13.5px; margin-top:3px}
+.набор-экраны{margin-top:8px; display:flex; flex-wrap:wrap; gap:5px}
+.набор-экраны span{font-size:11.5px; color:var(--muted);
+  border:1px solid var(--border); border-radius:99px; padding:2px 9px}
+.набор-нельзя{margin-top:8px; font-size:12.5px; color:var(--danger)}
+
+/* Листалка: две стрелки и положение в стопке — рядом, чтобы читалось
+   как один орган управления, а не три случайные кнопки. */
+.листалка{display:inline-flex; align-items:center; gap:2px;
+  border:1px solid var(--border); border-radius:99px; padding:2px 4px}
+.листалка .btn{border:0; padding:4px 10px; min-width:0}
+.листалка .btn[disabled]{opacity:.35; cursor:default}
+.лист-номер{color:var(--muted); font-size:12.5px; padding:0 4px; white-space:nowrap}
+
 /* ---------- зона скана заявления ---------- */
 .drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
   text-align:center; background:var(--bg); margin-bottom:16px}
@@ -785,6 +810,7 @@ const S = {
   вкладкаДосье:'main',       // раздел внутри досье
   архивПериод:'week',        // смена, неделя, месяц, три месяца
   журналПериод:'week',       // период журнала регистрации
+  доступЧерновик:null,       // наборы разделов, пока их правят
   архивРешение:'all', архивКанал:'all', архивРиск:'all',
   записьТекст:'',
   вкладкаПоручений:'issued', // выданные или полученные
@@ -990,6 +1016,39 @@ function renderNav(){
 function go(v){S.view=v; S.openId=null; S.conveyor=null; render()}
 
 /* ---------------- экран 1: лента ---------------- */
+/* Пустая стопка бывает по двум разным причинам, и путать их нельзя:
+   либо работа сделана, либо её не видно из-за фильтра по виду. Во втором
+   случае цензор решит, что разбирать нечего, — а это хуже лишнего клика.
+   Поэтому причина называется прямо, и снять фильтр можно одним нажатием. */
+function пустаяСтопка(){
+  const всего = left(S.stack).length;
+
+  if (всего && S.typeFilter !== 'all') {
+    return `<div class="empty"><div class="big">${ICON.queue}</div>
+      <b>Скрыто фильтром по виду</b>
+      <div>В стопке «${RISK_NAME[S.stack]}» ещё ${всего}
+        ${plural(всего, 'материал', 'материала', 'материалов')}, но среди них нет
+        ни одного с видом «${esc(KIND_LABEL[S.typeFilter] || S.typeFilter)}».</div>
+      <div style="margin-top:14px">
+        <button class="btn primary" onclick="setType('all')">Показать все виды</button>
+      </div></div>`;
+  }
+
+  /* Стопка разобрана — сразу предлагаем ту, где осталась работа,
+     чтобы не искать её глазами по закладкам. */
+  const есть = ['green', 'orange', 'red'].filter(к => к !== S.stack && left(к).length);
+  return `<div class="empty"><div class="big">${ICON.check}</div>
+    <b>Стопка «${RISK_NAME[S.stack]}» разобрана</b>
+    ${есть.length
+      ? `<div>Осталось в других стопках — можно продолжить отсюда.</div>
+         <div style="margin-top:14px">${есть.map(к =>
+           `<button class="btn ${к === 'red' ? 'danger' : 'primary'}" style="margin:0 5px"
+              onclick="setStack('${к}')">${RISK_NAME[к]} · ${left(к).length}</button>`).join('')}</div>`
+      : `<div>Разобрано всё, что поступило за смену.</div>
+         <div style="margin-top:14px"><button class="btn" onclick="go('reports')">Журнал решений</button></div>`}
+  </div>`;
+}
+
 function renderQueue(){
   const g=left('green').length, o=left('orange').length, r=left('red').length;
   const cur = left(S.stack).filter(x => S.typeFilter === 'all' || x.kind === S.typeFilter);
@@ -1067,7 +1126,7 @@ function renderQueue(){
       ${блокВыборки(cur, samples)}
       <div class="rows">${page.map(rowHTML).join('')}</div>
       ${cur.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${cur.length - page.length}</button></div>` : ''}
-    ` : `<div class="empty"><div class="big">${ICON.check}</div><b>Стопка «${RISK_NAME[S.stack]}» разобрана</b><div>Переключитесь на другую стопку или откройте журнал решений.</div></div>`}
+    ` : пустаяСтопка()}
   `;
 }
 /* Развилка после согласования основной массы зелёных.
@@ -1288,6 +1347,44 @@ function startConveyor(){
 
 /* ---------------- экран 3: карточка ---------------- */
 function openCard(id){S.openId=id; S.view='card'; render()}
+/* ---------- листание между материалами ----------
+
+   Чтобы посмотреть следующее письмо, не нужно возвращаться в общую ленту
+   и искать глазами, где остановились. Листание идёт по той же стопке
+   и тому же фильтру по виду, что были открыты: порядок на экране
+   и порядок листания — один и тот же.
+*/
+function соседи(){
+  return left(S.stack).filter(m => S.typeFilter === 'all' || m.kind === S.typeFilter);
+}
+
+function положениеВСтопке(id){
+  const список = соседи();
+  return { список, номер: список.findIndex(m => m.id === id) };
+}
+
+function листать(шаг){
+  const { список, номер } = положениеВСтопке(S.openId);
+  if (номер < 0) return;
+  const след = номер + шаг;
+  if (след < 0 || след >= список.length) {
+    toast(шаг > 0 ? 'Это последний материал в стопке' : 'Это первый материал в стопке');
+    return;
+  }
+  openCard(список[след].id);
+}
+
+/* После решения остаёмся в разборе: открывается следующий неразобранный
+   материал той же стопки. Возврат в ленту — только когда стопка кончилась. */
+function следующийПослеРешения(былНомер){
+  const список = соседи();
+  if (!список.length) return false;
+  const след = список[Math.min(былНомер, список.length - 1)];
+  if (!след) return false;
+  openCard(след.id);
+  return true;
+}
+
 function renderCard(){
   const x = S.queue.find(m=>m.id===S.openId);
   if(!x){ go('queue'); return }
@@ -1317,6 +1414,15 @@ function renderCard(){
   document.getElementById('content').innerHTML = `
     ${inConv?`<div class="progress"><span>Разбор подряд · ${pos} из ${S.conveyor.length}</span><span class="pbar"><i style="width:${Math.round(pos/S.conveyor.length*100)}%"></i></span></div>`:''}
     <div class="bar"><button class="btn sm" onclick="go('queue')">← В ленту</button>
+      ${(() => { const { список, номер } = положениеВСтопке(x.id);
+        if (номер < 0) return '';
+        return `<div class="листалка">
+          <button class="btn sm" onclick="листать(-1)" ${номер === 0 ? 'disabled' : ''}
+            title="Предыдущий материал · стрелка влево">←</button>
+          <span class="лист-номер tnum">${номер + 1} из ${список.length}</span>
+          <button class="btn sm" onclick="листать(1)" ${номер === список.length - 1 ? 'disabled' : ''}
+            title="Следующий материал · стрелка вправо">→</button>
+        </div>`; })()}
       <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>
       <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
       <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
@@ -1363,6 +1469,7 @@ function renderCard(){
 
 function decide(id, what, cut){
   const x = S.queue.find(m=>m.id===id); if(!x) return;
+  const номерДоРешения = положениеВСтопке(id).номер;
   x.status = what==='allow'?'allowed': what==='deny'?'denied':'partial';
   S.log.unshift({
     id:x.id, from:x.from, to:x.to, decision:what,
@@ -1386,8 +1493,10 @@ function decide(id, what, cut){
     if(S.conveyor.length){ toast(`${label}. Следующий материал — ${S.conveyor.length} ${S.conveyor.length===1?'остался':'осталось'}.`); openCard(S.conveyor[0]); return }
     S.conveyor=null; toast(`${label}. Стопка «Оранжевые» разобрана.`); go('queue'); return;
   }
+  /* Номер решённого запоминаем до того, как он исчезнет из стопки:
+     на его место встанет следующий, и разбор продолжится без возврата. */
   toast(label);
-  go('queue');
+  if (!следующийПослеРешения(номерДоРешения)) go('queue');
 }
 
 /* ---------------- экран 4: вымарывание ---------------- */
@@ -2621,6 +2730,12 @@ function renderStaff(){
       </div>
     </div>
 
+    <div class="note">Доступ выдаётся не должностью, а набором разделов — кнопка «Доступ»
+      в строке сотрудника. Один человек может закрывать несколько участков сразу:
+      сейчас совмещают ${(LIVE.staff || []).filter(x => (x.sections || []).length > 1).length}
+      ${plural((LIVE.staff || []).filter(x => (x.sections || []).length > 1).length,
+        'сотрудник', 'сотрудника', 'сотрудников')}.</div>
+
     <div class="note">Аттестацию проставляете вы. Неаттестованными обычно бывают цензоры
       и бухгалтеры — это гражданские должности по трудовому договору. О каждом таком
       сотруднике автоматически уведомляется региональный представитель ЗТ: с вольнонаёмными
@@ -2648,9 +2763,11 @@ function renderStaff(){
               <span class="chip ${s.attested ? 'a' : 'o'}">${s.attested ? 'аттестованный' : 'вольнонаёмный'}</span>
               <span class="chip">активность: ${esc(s.lastActive)}</span>
               ${s.review ? `<span class="chip o">${esc(s.reason)}</span>` : ''}
-            </div></div>
+            </div>
+            <div class="marks" style="margin-top:6px">${меткиНаборов(s)}</div></div>
           <div></div>
           <div class="acts">
+            <button class="btn sm primary" onclick="открытьДоступ('${s.id}')">Доступ</button>
             <button class="btn sm" onclick="сменитьАттестацию('${s.id}')"
               title="Аттестацию проставляет начальник учреждения">
               ${s.attested ? 'Снять аттестацию' : 'Аттестовать'}</button>
@@ -7918,6 +8035,101 @@ function renderArchive(){
   `;
 }
 
+/* ---------- совмещение ролей галочками ----------
+
+   Доступ выдаётся не ролью, а набором разделов. Галочка ставится на группу
+   целиком: «Цензура», «Оперативная работа», «Руководство учреждением»,
+   «Контроль переговоров». Поэкранных галочек нет намеренно — их было бы
+   полсотни, и кончилось бы тем, что ставят все подряд.
+
+   Одно ограничение жёсткое: два набора требуют аттестации. Вольнонаёмный
+   сотрудник работает по трудовому договору и не может ни подписывать
+   документы, ни видеть оперативные сведения. Галочка у него просто
+   не ставится, и рядом написано почему.
+*/
+
+const НАБОРЫ = REF.accessSections || [];
+const НАБОРЫ_ВСЕМ = REF.sectionsForAll || [];
+
+function наборыСотрудника(s){
+  return Array.isArray(s.sections) ? s.sections : [];
+}
+
+function разделПоКлючу(к){ return НАБОРЫ.find(р => р.ключ === к); }
+
+function меткиНаборов(s){
+  const наб = наборыСотрудника(s);
+  if (!наб.length) return '<span class="chip o">наборы не заданы</span>';
+  return наб.map(к => {
+    const р = разделПоКлючу(к);
+    return `<span class="chip a" title="${esc(р ? р.экраны.join(', ') : '')}">${esc(р ? р.имя : к)}</span>`;
+  }).join('') + (наб.length > 1
+    ? '<span class="chip">совмещает ' + наб.length + '</span>' : '');
+}
+
+function открытьДоступ(id){
+  const s = (LIVE.staff || REF.staff).find(x => x.id === id); if (!s) return;
+  S.доступЧерновик = наборыСотрудника(s).slice();
+  показатьДоступ(id);
+}
+
+function показатьДоступ(id){
+  const s = (LIVE.staff || REF.staff).find(x => x.id === id); if (!s) return;
+  const выбрано = S.доступЧерновик || [];
+
+  modal(`
+    <div class="mh"><div><h3>Доступ: ${esc(s.name)}</h3>
+      <div class="top-sub">${esc(s.role)}${s.unit ? ' · ' + esc(s.unit) : ''} ·
+        ${s.attested ? 'аттестованный' : 'вольнонаёмный'}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="note" style="margin-top:0">Отмечайте целыми наборами. Один человек может
+        закрывать несколько участков — тогда у него в меню появятся разделы всех отмеченных наборов.</div>
+
+      ${НАБОРЫ.map(р => {
+        const есть = выбрано.includes(р.ключ);
+        const нельзя = р.требуетАттестации && !s.attested;
+        return `
+          <label class="набор ${есть ? 'вкл' : ''} ${нельзя ? 'нельзя' : ''}">
+            <input type="checkbox" ${есть ? 'checked' : ''} ${нельзя ? 'disabled' : ''}
+              onchange="переключитьНабор('${id}','${р.ключ}')">
+            <div>
+              <b>${esc(р.имя)}</b>
+              <div class="набор-суть">${esc(р.суть)}</div>
+              <div class="набор-экраны">${р.экраны.map(э => `<span>${esc(э)}</span>`).join('')}</div>
+              ${нельзя ? `<div class="набор-нельзя">Недоступно вольнонаёмному сотруднику:
+                подпись документов и оперативные сведения требуют аттестации.</div>` : ''}
+            </div>
+          </label>`;
+      }).join('')}
+
+      <div class="note">Есть у всех независимо от наборов: ${НАБОРЫ_ВСЕМ.join(', ')}.</div>
+
+      ${выбрано.length === 0 ? `<div class="note warn">Не отмечено ни одного набора —
+        сотрудник войдёт, но рабочих разделов не увидит.</div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="сохранитьДоступ('${id}')">Сохранить</button>
+    </div>`);
+}
+
+function переключитьНабор(id, ключ){
+  const н = S.доступЧерновик || [];
+  S.доступЧерновик = н.includes(ключ) ? н.filter(к => к !== ключ) : н.concat(ключ);
+  показатьДоступ(id);
+}
+
+function сохранитьДоступ(id){
+  const s = (LIVE.staff || REF.staff).find(x => x.id === id); if (!s) return;
+  s.sections = (S.доступЧерновик || []).slice();
+  closeModal();
+  toast(s.sections.length
+    ? `${s.name}: ${s.sections.map(к => (разделПоКлючу(к) || {}).имя || к).join(', ')}`
+    : `${s.name}: наборы сняты, рабочих разделов не будет`);
+  render();
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -7970,6 +8182,16 @@ function render(){
   window.scrollTo({top:0});
 }
 собратьОперативника();
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal() });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); return; }
+  /* Листание стрелками работает только в карточке и когда не открыто окно
+     и курсор не в поле ввода — иначе стрелки нужны для текста. */
+  if (S.view !== 'card') return;
+  if (document.getElementById('modalRoot').innerHTML) return;
+  const а = document.activeElement;
+  if (а && (а.tagName === 'INPUT' || а.tagName === 'TEXTAREA' || а.tagName === 'SELECT')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); листать(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); листать(1); }
+});
 render();
 </script>
