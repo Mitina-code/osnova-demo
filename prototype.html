@@ -578,7 +578,7 @@ a.btn{text-decoration:none}
     <header class="topbar">
       <div>
         <div class="top-title" id="topTitle">Лента цензуры</div>
-        <div class="top-sub" id="topSub">Пятница, 28 августа 2026 · смена 08:00–20:00</div>
+        <div class="top-sub" id="topSub">Понедельник, 28 сентября 2026 · смена 08:00–20:00</div>
       </div>
       <div class="top-right">
         <div class="ctx">
@@ -783,6 +783,9 @@ const S = {
   вкладкаЛюдей:'card',       // картотека или входящие
   видДокумента:'all',        // фильтр на экране подписи
   вкладкаДосье:'main',       // раздел внутри досье
+  архивПериод:'week',        // смена, неделя, месяц, три месяца
+  журналПериод:'week',       // период журнала регистрации
+  архивРешение:'all', архивКанал:'all', архивРиск:'all',
   записьТекст:'',
   вкладкаПоручений:'issued', // выданные или полученные
   электронныеОбращения:true, // приём через терминал и ЛК родственника
@@ -940,7 +943,7 @@ function renderNav(){
   const счёт = {
     queue: leftAll().length,
     assignments: REF.assignments.filter(x=>x.status==='open').length,
-    archive: S.queue.filter(x=>x.status!=='queue').length,
+    archive: S.queue.filter(x=>x.status!=='queue').length + (HIST.записи || []).length,
     reports: S.log.length,
     channel: REF.channel.length,
     feed: LIVE.events.filter(e=>e.status==='new').length,
@@ -1519,52 +1522,6 @@ function closeAssignment(id){
 
 /* ---------------- Архив решений ---------------- */
 
-function renderArchive(){
-  const q = (S.archiveQuery || '').toLowerCase();
-  const all = S.queue.filter(x => x.status !== 'queue');
-  const list = q ? all.filter(x => (x.from + ' ' + x.to + ' ' + x.id).toLowerCase().includes(q)) : all;
-  const page = list.slice(0, S.shown);
-
-  document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Архив решений</h1>
-      <p>Любое решение хранится и может быть пересмотрено. Пересмотр не стирает прежнюю запись — он создаёт новую.</p></div>
-    <div class="bar">
-      <input id="archQ" class="search" placeholder="Поиск по отправителю, получателю или номеру"
-             value="${esc(S.archiveQuery || '')}" oninput="вводПоиска('archQ', v => { S.archiveQuery = v; S.shown = 30; renderArchive(); })">
-      <span class="chip">${list.length} из ${all.length}</span>
-    </div>
-    ${all.length ? `
-      <div class="rows">${page.map(x => `
-        <div class="row">
-          <div class="stripe ${RISK_LETTER[x.risk]}"></div>
-          <div>
-            <div class="who">${esc(x.from)} → ${esc(x.to)}</div>
-            <div class="meta">${x.id} · ${x.at} · ${esc(x.kindLabel)}</div>
-            <div class="marks">
-              <span class="chip ${x.status === 'allowed' ? 'g' : x.status === 'denied' ? 'r' : 'o'}">${
-                x.status === 'allowed' ? 'разрешено' : x.status === 'denied' ? 'не допущено' : 'пропущено с изъятием'}</span>
-              ${x.opDecision ? '<span class="chip a">решил оперативный сотрудник</span>' : ''}
-              ${x.opCase ? `<span class="chip a">приобщено к делу ${esc(x.opCase)}</span>` : ''}
-            </div>
-          </div>
-          <div><div class="sum">${esc(x.sum)}</div>
-            <div class="why">${x.opDecision
-              ? `Передано вами ${esc(x.handAt || '')}: «${esc(x.handNote || '')}». Решение принято ${esc(x.opAt || '')}.`
-              : esc(x.why)}</div></div>
-          <div class="acts">
-            <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
-            <button class="btn sm" onclick="openCard('${x.id}')">Посмотреть</button>
-            ${x.opDecision
-              ? '<span class="chip">решение оперативной службы</span>'
-              : `<button class="btn sm primary" onclick="reviseDecision('${x.id}')">Пересмотреть</button>`}
-          </div>
-        </div>`).join('')}
-      </div>
-      ${list.length > page.length ? `<div class="more"><button class="btn" onclick="showMore()">Показать ещё · осталось ${list.length - page.length}</button></div>` : ''}
-    ` : `<div class="empty"><div class="big">${ICON.clock}</div><b>Архив пуст</b><div>Решённые материалы появятся здесь после разбора ленты.</div></div>`}
-  `;
-}
-
 function reviseDecision(id){
   const x = S.queue.find(m => m.id === id); if (!x) return;
   const прежнее = S.log.find(e => e.id === id);
@@ -1614,6 +1571,13 @@ function renderReports(){
   document.getElementById('content').innerHTML = `
     <div class="page-head"><h1>Журналы и отчёты</h1>
       <p>Электронный журнал ведётся сам. Для бумажного — готовая вклейка за день.</p></div>
+
+    ${HIST.сводка ? `<div class="note">За три месяца работы: <b>${HIST.сводка.всего}</b>
+      ${plural(HIST.сводка.всего, 'отправление', 'отправления', 'отправлений')} —
+      в среднем ${HIST.сводка.вДень} в день. Бумажных ${HIST.сводка.бумага},
+      цифровых ${HIST.сводка.цифра}. Не допущено ${HIST.сводка.недопущено},
+      вымарано ${HIST.сводка.вымарано}.
+      <button class="btn sm" style="margin-left:10px" onclick="go('archive')">Открыть архив</button></div>` : ''}
 
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.queue}</div>
@@ -3247,10 +3211,29 @@ const ИСТОЧНИКИ = ['сервис ЗТ', 'Почта России', 'н�
 const ВИДЫ_КОРР = ['письмо', 'заказное письмо', 'телеграмма', 'бандероль', 'обращение', 'судебный документ', 'иное'];
 const РЕШЕНИЯ_КОРР = ['вручено', 'отправлено', 'не допущено', 'вымарано частично', 'на проверке'];
 
+/* Дата в журнале записана как «28.09.2026»; сравнивать строки нельзя,
+   поэтому переводим в дату. */
+function датаЖурнала(строка){
+  const ч = String(строка).split('.');
+  return new Date(Number(ч[2]), Number(ч[1]) - 1, Number(ч[0]));
+}
+
+function новаяДата(днейНазад){
+  const д = new Date(2026, 8, 28);
+  д.setDate(д.getDate() - днейНазад + 1);
+  return д;
+}
+
 function renderRegister(){
   const q = (S.regQuery || '').toLowerCase();
   const ист = S.regSource || 'all';
-  const все = ЖУРНАЛ.записи;
+  /* Журнал ведётся с начала работы; по умолчанию показываем неделю,
+     чтобы экран открывался на том, что происходит сейчас. */
+  const период = S.журналПериод || 'week';
+  const дней = { day: 1, week: 7, month: 30, all: 999 }[период];
+  const всеЗаписи = ЖУРНАЛ.записи;
+  const рубеж = новаяДата(дней);
+  const все = дней >= 999 ? всеЗаписи : всеЗаписи.filter(z => датаЖурнала(z.date) >= рубеж);
   const список = все.filter(z =>
     (ист === 'all' || z.source === ист) &&
     (!q || (z.from + ' ' + z.to + ' ' + z.n + ' ' + z.kind).toLowerCase().includes(q)));
@@ -3268,7 +3251,8 @@ function renderRegister(){
 
     <div class="stats">
       <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.reports}</div>
-        <div class="k">Записей в журнале</div><div class="v tnum">${все.length}</div><div class="d">за последние дни</div></div>
+        <div class="k">Записей в журнале</div><div class="v tnum">${все.length}</div>
+        <div class="d">из ${всеЗаписи.length} за три месяца</div></div>
       <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.channel}</div>
         <div class="k">Через сервисы ЗТ</div><div class="v tnum">${все.length - внешних}</div>
         <div class="d">${Math.round((все.length - внешних) / все.length * 100)}% потока</div></div>
@@ -3277,6 +3261,14 @@ function renderRegister(){
       <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
         <div class="k">Не допущено</div><div class="v tnum">${все.filter(z => z.decision === 'не допущено').length}</div>
         <div class="d">с оформлением акта</div></div>
+    </div>
+
+    <div class="bar">
+      <span class="lab">Период:</span>
+      <div class="seg">
+        ${[['day','День'],['week','Неделя'],['month','Месяц'],['all','Три месяца']].map(([к, имя]) =>
+          `<button class="${период === к ? 'on' : ''}" onclick="S.журналПериод='${к}'; render()">${имя}</button>`).join('')}
+      </div>
     </div>
 
     <div class="bar">
@@ -3737,7 +3729,7 @@ function числоПрописью(n){
 }
 
 /* Дата документа — та же, что у смены в шапке прототипа. */
-const ДАТА_СМЕНЫ = '28.08.2026';
+const ДАТА_СМЕНЫ = '28.09.2026';
 function сегодняДок(){ return ДАТА_СМЕНЫ; }
 
 /* ---------- приведение к единому виду ----------
@@ -7663,11 +7655,274 @@ function кадрКартинка(описание){
   </svg>`;
 }
 
+/* ================== АРХИВ ЗА ТРИ МЕСЯЦА ==================
+
+   Кабинет должен выглядеть так, будто им пользуются с конца июня: в архиве
+   лежат решения за девяносто дней, а не за одну смену.
+
+   Базы сцеплены между собой, и это главное. Запись архива ссылается
+   на конкретного человека из картотеки учреждения и на конкретный номер
+   его контакта — то есть на того же родственника с тем же телефоном,
+   который виден в досье. Открыв архивную запись, можно перейти в досье,
+   и там будет тот же человек и тот же контакт, а не похожий.
+
+   Чего в архиве нет намеренно: текста самих писем. Журнал фиксирует
+   решение и его основание, а материал хранится отдельно — так устроено
+   и на бумаге. Выдумывать содержимое трёхмесячной давности ради красоты
+   экрана значит показывать то, чего система не хранит.
+*/
+
+const А_РЕШЕНИЕ = [
+  { ключ: 'allow',   слово: 'вручено',    цвет: 'g' },
+  { ключ: 'partial', слово: 'вымарано',   цвет: 'o' },
+  { ключ: 'deny',    слово: 'не допущено', цвет: 'r' },
+];
+
+const А_РИСК = ['green', 'orange', 'red'];
+
+const А_ОСНОВАНИЕ = [
+  'признаков нарушения не выявлено',
+  'изъят фрагмент, остальное пропущено',
+  'выявлены сведения, запрещённые к передаче',
+];
+
+/* Даты считаются от дня смены назад. Записи истории хранят «сколько дней
+   назад», поэтому дата получается из одной точки и не разъезжается. */
+const А_СМЕНА = new Date(2026, 8, 28);
+
+function аДата(днейНазад){
+  const д = new Date(А_СМЕНА.getFullYear(), А_СМЕНА.getMonth(), А_СМЕНА.getDate() - днейНазад);
+  return дв(д.getDate()) + '.' + дв(д.getMonth() + 1) + '.' + д.getFullYear();
+}
+
+/* Кто принял решение. Большинство — цензор, небольшая часть прошла через
+   оперативного сотрудника: так это и происходит, когда материал передают. */
+function аКем(id, решение){
+  if (решение === 'deny' && id % 9 === 0) return 'Петров А.С., оперативный сотрудник';
+  return id % 23 === 0 ? 'Волкова М.А., начальник учреждения' : 'Соколова Е.С., цензор';
+}
+
+/* Разворот одной записи истории в то, что видно на экране. */
+function архивЗапись(z){
+  const [id, днейНазад, номерЧеловека, ci, входящее, канал, носитель, риск, решение, знаков] = z;
+  const p = POP.поId['p' + номерЧеловека] || null;
+  const контакт = p && p.contacts[ci] ? p.contacts[ci] : null;
+  const реш = А_РЕШЕНИЕ[решение];
+  const имяЧеловека = p ? p.name : '—';
+  const имяКонтакта = контакт ? контакт.name : '—';
+  return {
+    id,
+    номер: 'ОБ-' + (10000 + id % 90000),
+    pid: p ? p.id : null,
+    дата: аДата(днейНазад),
+    днейНазад,
+    человек: имяЧеловека,
+    место: p ? местоЧеловека(p) : '—',
+    контакт: имяКонтакта,
+    телефон: контакт ? контакт.phone : '—',
+    роль: контакт ? контакт.role : '',
+    подтверждён: контакт ? !!контакт.verified : false,
+    от: входящее ? имяКонтакта : имяЧеловека,
+    кому: входящее ? имяЧеловека : имяКонтакта,
+    направление: входящее ? 'входящее' : 'исходящее',
+    канал: H_КАНАЛ[канал],
+    носитель: носитель === 0 ? 'бумага' : 'цифровое',
+    риск: А_РИСК[риск],
+    решение: реш.ключ,
+    решениеСлово: реш.слово,
+    цвет: реш.цвет,
+    основание: А_ОСНОВАНИЕ[решение],
+    знаков,
+    акт: решение === 2 ? 'АКТ-' + (1000 + id % 8000) : null,
+    кем: аКем(id, реш.ключ),
+  };
+}
+
+/* Разворачиваем один раз: 17 тысяч записей каждый показ экрана разбирать
+   заново незачем. */
+let АРХИВ_КЭШ = null;
+function архивВсё(){
+  if (!АРХИВ_КЭШ) АРХИВ_КЭШ = (HIST.записи || []).map(архивЗапись);
+  return АРХИВ_КЭШ;
+}
+
+/* Решения текущей смены — та же форма записи, чтобы они встали в общий список
+   первыми и ничем от архивных не отличались. */
+function архивСмены(){
+  return S.queue.filter(x => x.status !== 'queue').map(x => {
+    const решение = x.status === 'allowed' ? 'allow' : x.status === 'denied' ? 'deny' : 'partial';
+    const реш = А_РЕШЕНИЕ.find(р => р.ключ === решение);
+    const p = POP.поId[x.pid] || null;
+    const контакт = p && p.contacts[x.ci] ? p.contacts[x.ci] : null;
+    return {
+      id: 'смена-' + x.id, номер: x.id, pid: x.pid,
+      дата: ДАТА_СМЕНЫ, днейНазад: 0,
+      человек: p ? p.name : x.to, место: x.unit,
+      контакт: контакт ? контакт.name : '—',
+      телефон: контакт ? контакт.phone : '—',
+      роль: контакт ? контакт.role : '',
+      подтверждён: контакт ? !!контакт.verified : false,
+      от: x.from, кому: x.to,
+      направление: String(x.dir).toLowerCase(),
+      канал: x.kindLabel, носитель: x.medium === 'paper' ? 'бумага' : 'цифровое',
+      риск: x.risk, решение, решениеСлово: реш.слово, цвет: реш.цвет,
+      основание: x.sum, знаков: x.chars || 0,
+      акт: решение === 'deny' ? 'АКТ-' + (ACT_NO) : null,
+      кем: x.opDecision ? 'Петров А.С., оперативный сотрудник' : 'Соколова Е.С., цензор',
+      смена: true, материал: x.id,
+    };
+  });
+}
+
+const А_ПЕРИОДЫ = [
+  ['shift', 'Смена', 0],
+  ['week', 'Неделя', 7],
+  ['month', 'Месяц', 30],
+  ['all', 'Три месяца', 90],
+];
+
+function архивОтфильтрованный(){
+  const период = А_ПЕРИОДЫ.find(п => п[0] === (S.архивПериод || 'week')) || А_ПЕРИОДЫ[1];
+  const дней = период[2];
+  const q = (S.archiveQuery || '').trim().toLowerCase();
+
+  let список = дней === 0 ? архивСмены() : архивСмены().concat(архивВсё().filter(з => з.днейНазад <= дней));
+
+  if (S.архивРешение && S.архивРешение !== 'all') список = список.filter(з => з.решение === S.архивРешение);
+  if (S.архивКанал && S.архивКанал !== 'all') список = список.filter(з => з.канал === S.архивКанал);
+  if (S.архивРиск && S.архивРиск !== 'all') список = список.filter(з => з.риск === S.архивРиск);
+  if (q) список = список.filter(з =>
+    (з.человек + ' ' + з.контакт + ' ' + з.телефон + ' ' + з.номер).toLowerCase().includes(q));
+
+  return список.sort((a, b) => a.днейНазад - b.днейНазад);
+}
+
+function архивИтоги(список){
+  const и = { всего: список.length, allow: 0, partial: 0, deny: 0, бумага: 0, знаков: 0 };
+  список.forEach(з => { и[з.решение]++; if (з.носитель === 'бумага') и.бумага++; и.знаков += з.знаков || 0; });
+  return и;
+}
+
+function открытьАрхивЗапись(ключ){
+  const з = архивОтфильтрованный().find(x => String(x.id) === String(ключ));
+  if (!з) return;
+  modal(`
+    <div class="mh"><div><h3>${esc(з.номер)}</h3>
+      <div class="top-sub">${esc(з.дата)} · ${esc(з.канал)} · ${esc(з.направление)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="kv">
+        <div class="k">Решение</div>
+        <div><span class="chip ${з.цвет}">${esc(з.решениеСлово)}</span> ${esc(з.основание)}</div>
+        <div class="k">Оценка анализатора</div>
+        <div><span class="chip ${RISK_LETTER[з.риск]}">${esc(RISK_ONE[з.риск] || з.риск)}</span></div>
+        <div class="k">Отправитель</div><div>${esc(з.от)}</div>
+        <div class="k">Получатель</div><div>${esc(з.кому)}</div>
+        <div class="k">${S.facility === 'сизо' ? 'Подозреваемый' : 'Осуждённый'}</div>
+        <div>${esc(з.человек)}, ${esc(з.место)}</div>
+        <div class="k">Контакт</div>
+        <div>${esc(з.контакт)}${з.роль ? ' · ' + esc(з.роль) : ''} · ${esc(з.телефон)}
+          ${з.подтверждён ? '<span class="chip g">подтверждён</span>' : '<span class="chip o">не подтверждён</span>'}</div>
+        <div class="k">Носитель</div><div>${esc(з.носитель)}${з.знаков ? ' · ' + з.знаков + ' зн.' : ''}</div>
+        <div class="k">Решение принял</div><div>${esc(з.кем)}</div>
+        ${з.акт ? `<div class="k">Акт</div><div>${esc(з.акт)}</div>` : ''}
+      </div>
+
+      ${з.смена ? '' : `<div class="note">Журнал хранит решение и его основание. Сам материал
+        трёхмесячной давности лежит в хранилище учреждения и по номеру ${esc(з.номер)}
+        поднимается оттуда — в журнале его текста нет, как и в бумажном.</div>`}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      ${з.pid ? `<button class="btn" onclick="closeModal(); сменитьРоль('operative'); открытьДосье('${з.pid}')">Досье</button>` : ''}
+      ${з.смена ? `<button class="btn primary" onclick="closeModal(); openCard('${esc(з.материал)}')">Открыть материал</button>` : ''}
+    </div>`);
+}
+
+function renderArchive(){
+  const список = архивОтфильтрованный();
+  const и = архивИтоги(список);
+  const показ = список.slice(0, S.shown);
+  const период = S.архивПериод || 'week';
+
+  const ряд = (ключ, значения, текущее, подпись) => `
+    <span class="lab">${подпись}:</span>
+    <div class="seg">
+      ${значения.map(([к, имя]) =>
+        `<button class="${текущее === к ? 'on' : ''}" onclick="S.${ключ}='${к}'; S.shown=30; render()">${имя}</button>`).join('')}
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Архив решений</h1>
+      <p>Всё, что решено с конца июня. Любое решение хранится и может быть пересмотрено —
+         пересмотр не стирает прежнюю запись, а создаёт новую.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.queue}</div>
+        <div class="k">Решений в выборке</div><div class="v tnum">${и.всего}</div>
+        <div class="d">из ${архивВсё().length + архивСмены().length} за три месяца</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Вручено</div><div class="v tnum">${и.allow}</div>
+        <div class="d">${и.всего ? Math.round(и.allow / и.всего * 100) : 0}% выборки</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Не допущено</div><div class="v tnum">${и.deny}</div>
+        <div class="d">по каждому акт</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.scissors}</div>
+        <div class="k">С изъятием</div><div class="v tnum">${и.partial}</div>
+        <div class="d">бумажных в выборке: ${и.бумага}</div></div>
+    </div>
+
+    <div class="bar">
+      ${ряд('архивПериод', А_ПЕРИОДЫ.map(п => [п[0], п[1]]), период, 'Период')}
+    </div>
+
+    <div class="bar">
+      ${ряд('архивРешение', [['all','Все'],['allow','Вручено'],['partial','С изъятием'],['deny','Не допущено']],
+        S.архивРешение || 'all', 'Решение')}
+      ${ряд('архивКанал', [['all','Все'],['письмо','Письма'],['голосовое','Голос'],['видео','Видео']],
+        S.архивКанал || 'all', 'Канал')}
+    </div>
+
+    <div class="bar">
+      <input id="archQ" class="search" placeholder="Поиск по фамилии, контакту, телефону или номеру"
+             value="${esc(S.archiveQuery || '')}"
+             oninput="вводПоиска('archQ', v => { S.archiveQuery = v; S.shown = 30; renderArchive(); })">
+      <span class="chip">${показ.length} из ${список.length}</span>
+    </div>
+
+    ${список.length ? `
+      <div class="журнал">
+        <table class="журнал-таб">
+          <colgroup><col style="width:9%"><col style="width:10%"><col style="width:19%">
+            <col style="width:19%"><col style="width:11%"><col style="width:14%"><col style="width:18%"></colgroup>
+          <tr><th>Дата</th><th>Номер</th><th>Отправитель</th><th>Получатель</th>
+            <th>Канал</th><th>Решение</th><th>Кто решил</th></tr>
+          ${показ.map(з => `
+            <tr onclick="открытьАрхивЗапись('${з.id}')" style="cursor:pointer">
+              <td class="tnum">${esc(з.дата)}${з.смена ? '<div class="top-sub">смена</div>' : ''}</td>
+              <td class="tnum">${esc(з.номер)}</td>
+              <td>${esc(з.от)}</td>
+              <td>${esc(з.кому)}<div class="top-sub">${esc(з.телефон)}</div></td>
+              <td>${esc(з.канал)}<div class="top-sub">${esc(з.носитель)}</div></td>
+              <td><span class="chip ${з.цвет}">${esc(з.решениеСлово)}</span>
+                ${з.акт ? `<div class="top-sub">${esc(з.акт)}</div>` : ''}</td>
+              <td>${esc(з.кем)}</td>
+            </tr>`).join('')}
+        </table>
+      </div>
+      ${список.length > показ.length
+        ? `<div class="more"><button class="btn" onclick="S.shown += 60; renderArchive()">Показать ещё</button>
+           <span class="chip">показано ${показ.length} из ${список.length}</span></div>` : ''}`
+      : `<div class="empty"><div class="big">${ICON.clock}</div><b>Ничего не найдено</b>
+         <div>Попробуйте расширить период или снять фильтры.</div></div>`}
+  `;
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
   const T = {
-    queue:       ['Лента цензуры', 'Пятница, 28 августа 2026 · смена 08:00–20:00'],
+    queue:       ['Лента цензуры', 'Понедельник, 28 сентября 2026 · смена 08:00–20:00'],
     card:        ['Материал на проверке', 'Решение принимает цензор'],
     redact:      ['Вымарывание фрагмента', 'Изъятие части текста с сохранением остального'],
     assignments: ['Мои поручения', 'Задания от руководства и системы'],
