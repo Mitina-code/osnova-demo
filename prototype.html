@@ -557,6 +557,54 @@ a.btn{text-decoration:none}
   #printRoot .бл-таб{font-size:8.5pt}
 }
 
+/* ---------- бланки досуга ----------
+   Экран читает цензор старшего возраста: шрифт крупнее обычного,
+   подписи не мельче 14px, основной текст — тёмный, а не серый. */
+.досуг{font-size:16.5px}
+.досуг .page-head p{font-size:16.5px; color:var(--text)}
+.досуг .card h3{font-size:20px; font-weight:700; margin-bottom:6px}
+.досуг .card .под{font-size:15.5px; color:var(--text); margin-bottom:16px}
+.досуг .note{font-size:16px; line-height:1.6}
+.досуг .chip{font-size:14px; padding:5px 13px}
+.досуг .stat .k, .досуг .stat .d{font-size:14.5px}
+.досуг .btn{font-size:16px; padding:12px 20px}
+.досуг .btn.big{font-size:18px; padding:16px 28px; border-radius:14px}
+.досуг-оценка{display:inline-block; margin-top:8px; font-size:17px; font-weight:700; color:var(--text)}
+.досуг-табл{width:100%; border-collapse:collapse; font-size:16px}
+.досуг-табл th{text-align:left; font-size:14.5px; color:var(--muted); font-weight:600;
+  padding:8px 12px; border-bottom:1px solid var(--border)}
+.досуг-табл td{padding:12px; border-bottom:1px solid var(--border-soft); vertical-align:middle}
+.досуг-табл tr:last-child td{border-bottom:0}
+.досуг-табл .число{font-size:20px; font-weight:700; font-variant-numeric:tabular-nums}
+.досуг-низ{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  margin-top:18px; padding-top:18px; border-top:1px solid var(--border)}
+.досуг-низ .txt{font-size:15.5px; color:var(--text); max-width:560px}
+.образцы{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+/* Бланк нарисован как лист бумаги: только клетки, галочки и код бланка. */
+.бланк{background:#fff; border:1.5px solid #9CA3AF; border-radius:6px; padding:20px 22px;
+  font-size:16px; color:var(--text); position:relative}
+.бланк-шапка{display:flex; justify-content:space-between; gap:18px; align-items:flex-start;
+  border-bottom:1.5px dashed #9CA3AF; padding-bottom:14px; margin-bottom:16px}
+.бланк-шапка .имя{font-size:18px; font-weight:700}
+.бланк-шапка .стр{font-size:15.5px; margin-top:3px}
+.бланк-код{text-align:center; font-size:13px; color:var(--muted); flex:none}
+.бланк-код svg{display:block; margin:0 auto 4px}
+.бланк-сетка{display:grid; gap:0; border:2px solid var(--text); width:max-content}
+.бланк-сетка span{width:38px; height:38px; display:grid; place-items:center; font-size:19px; font-weight:600;
+  border:1px solid #9CA3AF; font-variant-numeric:tabular-nums}
+.бланк-вопр{display:flex; flex-direction:column; gap:12px}
+.бланк-вопр .стр{display:flex; align-items:center; gap:14px; font-size:16px}
+.бланк-вопр .н{width:34px; font-weight:700}
+.кв{width:30px; height:30px; border:2px solid var(--text); border-radius:5px; display:inline-grid;
+  place-items:center; font-weight:700; font-size:15px}
+.кв.да{background:var(--lilac)}
+.кв.да::after{content:'✓'; color:var(--primary); font-size:18px}
+.бланк-дни{display:grid; grid-template-columns:repeat(10, 38px); gap:8px}
+.бланк-дни .д{text-align:center; font-size:13px; color:var(--muted)}
+.бланк-низ{margin-top:16px; font-size:14.5px; color:var(--muted)}
+.лишнее{outline:3px solid var(--danger); outline-offset:3px; background:var(--soft-pink); border-radius:6px}
+.лишнее-метка{display:inline-block; margin-top:6px; font-size:14.5px; font-weight:700; color:var(--danger)}
+
 /* ---------- адаптив: десктоп от 1366, планшет — свёрнутый сайдбар ---------- */
 @media (max-width:1180px){
   .split{grid-template-columns:1fr}
@@ -639,6 +687,7 @@ a.btn{text-decoration:none}
 <script src="data-history.js"></script>
 <script src="data-shift-normal.js"></script>
 <script src="data-shift-peak.js"></script>
+<script src="data-family.js"></script>
 <script>
 /* =======================================================================
    ДАННЫЕ
@@ -685,6 +734,27 @@ const POP = (() => {
   люди.forEach(p => { поId[p.id] = p; });
   return { люди, поId, сводка: сырое.сводка || {}, параметры: сырое.параметры || {} };
 })();
+
+/* --------------------------------------------------------------
+   ДОСУГ НА БУМАГЕ
+   Общие данные с сайтом родственника «ZT Рядом» (data-family.js).
+   Здесь нужен только раздел «досуг»: форматы, подписки, бланки
+   ответов, пришедшие сегодня, и просьбы «подключите мне».
+   Если файла нет — экран спокойно показывает, что данных нет.
+   -------------------------------------------------------------- */
+const ДОСУГ_ДАННЫЕ = (() => {
+  const семья = window.OSNOVA_FAMILY;
+  const д = семья && семья.досуг;
+  if (!д || !Array.isArray(д.бланкиСегодня)) return null;
+  const форматы = (д.форматы || []).map(([id, имя, коротко, ответ, цена]) => ({ id, имя, коротко, ответ, цена }));
+  const поФормату = {};
+  форматы.forEach(ф => { поФормату[ф.id] = ф; });
+  const бланки = д.бланкиСегодня.map(([номер, pid, fid, выпуск, статус, причина]) =>
+    ({ номер, pid, fid, выпуск, статус, причина }));
+  return { форматы, поФормату, бланки, подписки: д.подписки || [], просьбы: д.просьбы || [] };
+})();
+/* Что цензор уже сделала с бланками за смену. Живёт в памяти, как и всё остальное. */
+const ДОСУГ = { утверждено: null, возвращено: null };
 
 /* Кто участвует в материале: человек из населения и один из его контактов. */
 function участники(m){
@@ -912,12 +982,14 @@ const ICON = {
   live: SVG('<circle cx="12" cy="12" r="3"/><path d="M6.5 6.5a8 8 0 000 11"/><path d="M17.5 6.5a8 8 0 010 11"/>'),
   completed: SVG('<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'),
   alert: SVG('<path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/>'),
+  dosug: SVG('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3v18"/><path d="M13 12l1.5 1.5L17 11"/>'),
 };
 
 /* ---------------- роли ---------------- */
 
 const РАЗДЕЛЫ = {
   queue:       [ICON.queue,      'Лента цензуры'],
+  dosug:       [ICON.dosug,      'Бланки досуга'],
   archive:     [ICON.archive,    'Архив решений'],
   reports:     [ICON.reports,    'Журналы и отчёты'],
   register:    [ICON.archive,    'Журнал регистрации'],
@@ -948,7 +1020,7 @@ const РАЗДЕЛЫ = {
 
 const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
-                разделы:['queue','assignments','register','archive','reports','channel','support','legal'] },
+                разделы:['queue','dosug','assignments','register','archive','reports','channel','support','legal'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'situation',
                 разделы:['situation','prevention','handed','signals','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
@@ -968,6 +1040,7 @@ function renderNav(){
   const роль = РОЛИ[S.role];
   const счёт = {
     queue: leftAll().length,
+    dosug: досугЖдёт(),
     assignments: REF.assignments.filter(x=>x.status==='open').length,
     archive: S.queue.filter(x=>x.status!=='queue').length + (HIST.записи || []).length,
     reports: S.log.length,
@@ -1582,9 +1655,10 @@ function renderLog(){
 }
 function entryHTML(e){
   const cls = e.decision==='allow'?'allow': e.decision==='deny'?'deny':'part';
-  const word = e.decision==='allow'?'разрешено': e.decision==='deny'?'не допущено':'пропущено с изъятием';
+  /* Запись может назвать решение своими словами (например, пачка бланков досуга). */
+  const word = e.word || (e.decision==='allow'?'разрешено': e.decision==='deny'?'не допущено':'пропущено с изъятием');
   return `<div class="entry ${cls}">
-    <div class="h"><span class="id">${e.id}</span><span>${esc(e.from)} → ${esc(e.to)}</span><span class="chip ${e.decision==='allow'?'g':e.decision==='deny'?'r':'o'}">${word}</span></div>
+    <div class="h"><span class="id">${esc(e.id)}</span><span>${esc(e.from)} → ${esc(e.to)}</span><span class="chip ${e.decision==='allow'?'g':e.decision==='deny'?'r':'o'}">${esc(word)}</span></div>
     <div class="l">основание: ${esc(e.basis)}</div>
     <div class="l">решение приняла: ${esc(e.by)} · ${e.at}${e.group>1?` · <b>в составе группы из ${e.group}</b>`:''}</div>
   </div>`;
@@ -1738,7 +1812,7 @@ function openGlue(){
         ${rows.map(e => `<div class="glue-row">
           <span>${esc(e.id)}</span>
           <span>${esc(e.from)} → ${esc(e.to)}</span>
-          <span>${e.decision === 'allow' ? 'разрешено' : e.decision === 'deny' ? 'не допущено' : 'с изъятием'}</span>
+          <span>${esc(e.word || (e.decision === 'allow' ? 'разрешено' : e.decision === 'deny' ? 'не допущено' : 'с изъятием'))}</span>
           <span>${esc(e.basis)}</span></div>`).join('')}
         ${S.log.length > 40 ? `<div class="top-sub" style="padding:10px 0">…и ещё ${S.log.length - 40} записей на следующих листах</div>` : ''}
       </div>
@@ -8130,12 +8204,305 @@ function сохранитьДоступ(id){
   render();
 }
 
+/* ====================================================================
+   БЛАНКИ ДОСУГА
+   Семья оплачивает человеку «досуг на бумаге»: главы повести, задачники,
+   рабочие тетради. Как это устроено для цензора:
+   1. Исходящие выпуски одобряются один раз на весь тираж (реестр).
+      Каждый экземпляр цензор не читает.
+   2. Обратно приходят бланки ответов — только клетки и галочки.
+      Машина сверяет каждый с ключом ДО цензора. Бланк с лишним
+      (свободный текст, посторонние отметки, повреждение, чужой вариант)
+      возвращается автору и из учреждения не выходит.
+   3. Верные бланки тоже никуда не уходят: в ЗТ записывается только
+      отметка «засчитано» (с согласия человека). Родственникам ответы
+      не передаются.
+   4. Цензор утверждает всю пачку одним действием. Решение — её,
+      машина только помогает.
+   ==================================================================== */
+
+/* Сколько минут уходило на проверку одного самодельного кроссворда в письме. */
+const ДОСУГ_МИНУТ_НА_КРОССВОРД = 10;
+
+function досугВерные(){ return ДОСУГ_ДАННЫЕ ? ДОСУГ_ДАННЫЕ.бланки.filter(б => б.статус === 'ok') : []; }
+function досугВозврат(){ return ДОСУГ_ДАННЫЕ ? ДОСУГ_ДАННЫЕ.бланки.filter(б => б.статус !== 'ok') : []; }
+function досугЖдёт(){ return ДОСУГ.утверждено ? 0 : досугВерные().length; }
+function досугЧас(){ const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+
+/* Человек из населения учреждения: ФИО и где живёт (отряд или камера). */
+function досугКто(pid){
+  const p = POP.поId[pid];
+  return p ? { имя: p.name, где: местоЧеловека(p) } : { имя: 'нет в картотеке', где: '—' };
+}
+function досугФормат(fid){
+  return (ДОСУГ_ДАННЫЕ && ДОСУГ_ДАННЫЕ.поФормату[fid]) || { id: fid, имя: fid, ответ: '', коротко: '' };
+}
+/* Повторяемый «случайный» ряд по номеру бланка: один и тот же бланк
+   всегда выглядит одинаково. */
+function досугСлучай(номер){
+  let s = (parseInt(String(номер).replace(/\D/g, ''), 10) || 1) % 2147483647;
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+
+/* Реестр: текущий выпуск и даты одобрения. Выпуск одобряет УФСИН один раз
+   на весь тираж, сам формат — ЦА ФСИН при подключении. */
+function досугРеестр(){
+  const д = ДОСУГ_ДАННЫЕ;
+  const даты = ['22.09.2026', '21.09.2026', '23.09.2026', '18.09.2026', '22.09.2026', '24.09.2026'];
+  return д.форматы.map((ф, i) => {
+    const выпуски = д.бланки.filter(б => б.fid === ф.id).map(б => б.выпуск);
+    const текущий = выпуски.length ? Math.max(...выпуски) + 1 : 1;
+    const подписчиков = д.подписки.filter(п => (п[3] || []).includes(ф.id)).length;
+    return { ф, текущий, дата: даты[i % даты.length], подписчиков };
+  });
+}
+
+/* Код бланка (QR): по нему машина понимает, чей это бланк и какой вариант. */
+function досугКод(номер, испорчен){
+  const r = досугСлучай(номер + '7');
+  const n = 21, k = 4;
+  let клетки = '';
+  const угол = (x, y) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    if (угол(x, y)) continue;
+    if (r() > .52) клетки += `<rect x="${x * k}" y="${y * k}" width="${k}" height="${k}"/>`;
+  }
+  const рамка = (x, y) => `<rect x="${x * k + 2}" y="${y * k + 2}" width="${7 * k - 4}" height="${7 * k - 4}" fill="none" stroke="#1F2937" stroke-width="4"/>
+    <rect x="${x * k + 8}" y="${y * k + 8}" width="${3 * k}" height="${3 * k}"/>`;
+  const пятно = испорчен
+    ? `<path d="M50 30 Q70 20 84 40 L84 84 L30 84 Q22 60 50 30z" fill="#FCE7F3" stroke="#DC2626" stroke-width="2"/>` : '';
+  return `<svg width="96" height="96" viewBox="0 0 84 84" fill="#1F2937" role="img" aria-label="код бланка">
+    ${клетки}${рамка(0, 0)}${рамка(n - 7, 0)}${рамка(0, n - 7)}${пятно}</svg>`;
+}
+
+/* Сам бланк: шапка с номером и получателем, поле ответов, код бланка.
+   Свободного текста на бланке нет по устройству — только клетки и отметки.
+   Для бланка на возврат подсвечено то, из-за чего он не прошёл. */
+function досугБланкHTML(б){
+  const ф = досугФормат(б.fid);
+  const кто = досугКто(б.pid);
+  const r = досугСлучай(б.номер);
+  const причина = б.статус === 'ok' ? '' : (б.причина || '');
+  const чужой = /чужой вариант/.test(причина);
+  const лишнее = /посторонн/.test(причина);
+  const испорчен = /повреж/.test(причина);
+  const буквы = ['А', 'Б', 'В', 'Г'];
+
+  let поле = '';
+  if (б.fid === 'povest') {
+    поле = `<div class="бланк-вопр">${['Куда пойдёт герой?', 'Кому он поверит?', 'Чем закончится глава?'].map((q, i) => {
+      const выбор = Math.floor(r() * 3);
+      return `<div class="стр"><span class="н">${i + 1}.</span><span style="min-width:240px">${q}</span>
+        ${буквы.slice(0, 3).map((б2, j) => `<span class="кв${j === выбор ? ' да' : ''}" title="${б2}"></span> ${б2}`).join(' ')}</div>`;
+    }).join('')}</div>`;
+  } else if (б.fid === 'enc') {
+    поле = `<div class="бланк-вопр">${[1, 2, 3, 4, 5].map(i => {
+      const выбор = Math.floor(r() * 4);
+      return `<div class="стр"><span class="н">${i}.</span>
+        ${буквы.map((б2, j) => `<span class="кв${j === выбор ? ' да' : ''}"></span> ${б2.toLowerCase()}`).join(' ')}</div>`;
+    }).join('')}</div>`;
+  } else if (б.fid === 'marafon') {
+    поле = `<div class="бланк-дни">${Array.from({ length: 30 }, (_, i) =>
+      `<div><span class="кв${r() > .3 ? ' да' : ''}"></span><div class="д">${i + 1}</div></div>`).join('')}</div>`;
+  } else {
+    /* задачник, тетрадь, «пополам»: клетки с цифрами, одно верное решение */
+    const n = 6;
+    поле = `<div class="бланк-сетка" style="grid-template-columns:repeat(${n}, 38px)">${Array.from({ length: n * n }, () =>
+      `<span>${r() > .35 ? 1 + Math.floor(r() * 6) : ''}</span>`).join('')}</div>`;
+  }
+
+  return `<div class="бланк">
+    <div class="бланк-шапка">
+      <div>
+        <div class="имя">${esc(ф.имя)}</div>
+        <div class="стр">Выпуск № ${б.выпуск} ·
+          <span class="${чужой ? 'лишнее' : ''}" style="padding:0 4px">вариант ${чужой ? 'Б' : 'А'}</span>
+          ${чужой ? '<div class="лишнее-метка">Заполнен вариант Б, а выдан вариант А</div>' : ''}</div>
+        <div class="стр">Бланк <b>${esc(б.номер)}</b></div>
+        <div class="стр">Чей: <b>${esc(кто.имя)}</b> · ${esc(кто.где)}</div>
+      </div>
+      <div class="бланк-код ${испорчен ? 'лишнее' : ''}">${досугКод(б.номер, испорчен)}код бланка
+        ${испорчен ? '<div class="лишнее-метка">Бланк повреждён,<br>код не читается</div>' : ''}</div>
+    </div>
+    ${поле}
+    ${лишнее ? `<div class="лишнее" style="margin-top:18px; padding:10px 14px; display:flex; align-items:center; gap:14px">
+        <svg width="220" height="34" viewBox="0 0 220 34" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round">
+          <path d="M4 20c10-14 18 10 28-4s16 12 26-2 18 10 28-6 14 14 26 0 16 8 26-4 18 12 26-2 14 6 24-2"/></svg>
+        <span class="лишнее-метка" style="margin:0">Посторонняя запись вне клеток</span></div>` : ''}
+    <div class="бланк-низ">Ответ: ${esc(ф.ответ)}. Свободного текста на бланке нет — только клетки и отметки.</div>
+  </div>`;
+}
+
+function открытьБланк(номер){
+  const б = ДОСУГ_ДАННЫЕ && ДОСУГ_ДАННЫЕ.бланки.find(x => x.номер === номер);
+  if (!б) return;
+  const ok = б.статус === 'ok';
+  modal(`
+    <div class="mh"><div><h3>Бланк ${esc(б.номер)}</h3>
+      <div class="top-sub" style="font-size:15px">${ok ? 'Проверен машиной по ключу: лишнего нет' : 'На возврат автору: ' + esc(б.причина || 'причина не указана')}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb досуг">
+      ${ok
+        ? `<div class="note ok">На бланке только клетки и отметки. Ответы остаются в учреждении — в ZT записывается лишь отметка «засчитано».</div>`
+        : `<div class="note warn"><b>Почему возврат:</b> ${esc(б.причина || '')}. Лишнее обведено красным. Бланк вернётся автору и из учреждения не выйдет.</div>`}
+      ${досугБланкHTML(б)}
+    </div>
+    <div class="mf"><button class="btn primary" onclick="closeModal()">Закрыть</button></div>`);
+}
+
+function утвердитьПачкуДосуга(){
+  const верные = досугВерные();
+  if (!верные.length || ДОСУГ.утверждено) return;
+  ДОСУГ.утверждено = досугЧас();
+  S.log.unshift({
+    id: верные[0].номер + '…' + верные[верные.length - 1].номер,
+    from: 'Бланки досуга · ' + верные.length + ' шт.', to: 'отметка «засчитано»',
+    decision: 'allow', word: 'пачка утверждена',
+    basis: 'каждый бланк проверен машиной по ключу, лишнего нет; ответы остаются в учреждении, родственникам не передаются',
+    by: 'Соколова Е.С., цензор', at: nowStamp(), group: 1, act: null,
+  });
+  render();
+  toast('Пачка утверждена: ' + верные.length + ' ' + plural(верные.length, 'бланк', 'бланка', 'бланков') + '. Запись внесена в журнал решений.');
+}
+
+function вернутьБланкиДосуга(){
+  const возврат = досугВозврат();
+  if (!возврат.length || ДОСУГ.возвращено) return;
+  ДОСУГ.возвращено = досугЧас();
+  S.log.unshift({
+    id: 'досуг · возврат', from: 'Бланки досуга · ' + возврат.length + ' шт.', to: 'авторам, в отряды',
+    decision: 'return', word: 'возвращено автору',
+    basis: 'на бланке лишнее или он не читается: ' + [...new Set(возврат.map(б => б.причина))].filter(Boolean).join('; '),
+    by: 'Соколова Е.С., цензор', at: nowStamp(), group: 1, act: null,
+  });
+  render();
+  toast('Возвращено авторам: ' + возврат.length + ' ' + plural(возврат.length, 'бланк', 'бланка', 'бланков') + '. Запись внесена в журнал решений.');
+}
+
+function renderDosug(){
+  const c = document.getElementById('content');
+  if (!ДОСУГ_ДАННЫЕ || !ДОСУГ_ДАННЫЕ.бланки.length) {
+    c.innerHTML = `<div class="досуг"><div class="empty"><div class="big">${ICON.dosug}</div>
+      <b>Бланков досуга сегодня нет</b>
+      <div>Когда придут бланки ответов, они появятся здесь уже проверенными машиной.</div></div></div>`;
+    return;
+  }
+  const д = ДОСУГ_ДАННЫЕ;
+  const верные = досугВерные();
+  const возврат = досугВозврат();
+  const просьбыНедели = д.просьбы.filter(п => п[2] <= 7);
+  const часов = Math.round(верные.length * ДОСУГ_МИНУТ_НА_КРОССВОРД / 60);
+
+  /* по форматам — что именно утверждается */
+  const поФорматам = д.форматы.map(ф => ({ ф, n: верные.filter(б => б.fid === ф.id).length })).filter(x => x.n);
+  /* три образца из разных форматов */
+  const образцы = [];
+  for (const б of верные) {
+    if (!образцы.some(x => x.fid === б.fid)) образцы.push(б);
+    if (образцы.length === 3) break;
+  }
+
+  c.innerHTML = `<div class="досуг">
+    <div class="page-head"><h1>Бланки досуга</h1>
+      <p>Ответы на задачи и главы, которые пришли сегодня. Машина уже сверила каждый бланк с ключом.</p></div>
+
+    <div class="note">
+      <b>Зачем это.</b> Раньше родные вкладывали в письма самодельные кроссворды, и каждый
+      приходилось проверять вручную — около ${ДОСУГ_МИНУТ_НА_КРОССВОРД} минут. Теперь задания приходят
+      одобренными выпусками, а ответы — на бланках с клетками и галочками.
+      <br><span class="досуг-оценка">Вместо ~${часов} ${plural(часов, 'часа', 'часов', 'часов')} ручной проверки — одна подпись</span>
+      <span class="top-sub" style="font-size:14.5px"> · оценка: ${верные.length} ${plural(верные.length, 'бланк', 'бланка', 'бланков')} × ${ДОСУГ_МИНУТ_НА_КРОССВОРД} мин</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div>
+        <div class="k">Пришло сегодня</div><div class="v tnum">${д.бланки.length}</div><div class="d">бланков ответов</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
+        <div class="k">Чистые, проверены машиной</div><div class="v tnum">${верные.length}</div>
+        <div class="d">${ДОСУГ.утверждено ? 'утверждены' : 'ждут вашей подписи'}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.alert}</div>
+        <div class="k">На возврат автору</div><div class="v tnum">${возврат.length}</div>
+        <div class="d">${ДОСУГ.возвращено ? 'возвращены' : 'есть лишнее или не читается'}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.channel}</div>
+        <div class="k">Просьб о досуге за неделю</div><div class="v tnum">${просьбыНедели.length}</div>
+        <div class="d">обычные письма родным</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Пачка на утверждение · ${верные.length} ${plural(верные.length, 'бланк', 'бланка', 'бланков')}</h3>
+      <div class="под">Каждый бланк проверен машиной по ключу: только клетки и галочки, лишнего нет.
+        Бланки остаются в учреждении. В ZT записывается только отметка «засчитано» — с согласия человека.
+        Родственникам ответы не передаются.</div>
+      <table class="досуг-табл">
+        <thead><tr><th>Формат</th><th>Как отвечает</th><th style="text-align:right">Бланков</th></tr></thead>
+        <tbody>${поФорматам.map(x => `<tr>
+          <td><b>${esc(x.ф.имя)}</b></td><td>${esc(x.ф.ответ)}</td>
+          <td style="text-align:right"><span class="число">${x.n}</span></td></tr>`).join('')}</tbody>
+      </table>
+      <div style="margin-top:16px; font-size:16px">Посмотреть выборочно — любой из трёх бланков:</div>
+      <div class="образцы">${образцы.map(б => `<button class="btn" onclick="открытьБланк('${esc(б.номер)}')">
+        ${ICON.dosug} ${esc(б.номер)} · ${esc(досугФормат(б.fid).имя)}</button>`).join('')}</div>
+      <div class="досуг-низ">
+        ${ДОСУГ.утверждено
+          ? `<div class="note ok" style="margin:0; flex:1">Утверждено ${ДОСУГ.утверждено}, Соколова Е.С. · ${верные.length} ${plural(верные.length, 'бланк', 'бланка', 'бланков')} засчитано. Запись есть в журнале решений.</div>`
+          : `<div class="txt">Решение по пачке принимаете вы. Машина только проверила бланки по ключу.</div>
+             <button class="btn primary big" onclick="утвердитьПачкуДосуга()">${ICON.check} Утвердить пачку: ${верные.length} ${plural(верные.length, 'бланк', 'бланка', 'бланков')}</button>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>На возврат автору · ${возврат.length}</h3>
+      <div class="под">На этих бланках есть лишнее: запись вне клеток, чужой вариант или бланк не читается.
+        Они вернутся тому, кто их заполнил, и из учреждения не выйдут. Нажмите «Открыть», чтобы увидеть, что не так.</div>
+      ${возврат.length ? `<table class="досуг-табл">
+        <thead><tr><th>Бланк</th><th>Чей</th><th>Формат</th><th>Причина</th><th></th></tr></thead>
+        <tbody>${возврат.map(б => { const кто = досугКто(б.pid); return `<tr>
+          <td class="tnum"><b>${esc(б.номер)}</b></td>
+          <td>${esc(кто.имя)}<div class="top-sub" style="font-size:14px">${esc(кто.где)}</div></td>
+          <td>${esc(досугФормат(б.fid).имя)}</td>
+          <td><span class="chip o">${esc(б.причина || 'не указана')}</span></td>
+          <td style="text-align:right"><button class="btn sm" style="font-size:15px" onclick="открытьБланк('${esc(б.номер)}')">Открыть</button></td></tr>`; }).join('')}</tbody>
+      </table>` : '<div class="под">Сегодня возвратов нет.</div>'}
+      ${возврат.length ? `<div class="досуг-низ">
+        ${ДОСУГ.возвращено
+          ? `<div class="note ok" style="margin:0; flex:1">Возвращено авторам ${ДОСУГ.возвращено}, Соколова Е.С. · ${возврат.length} ${plural(возврат.length, 'бланк', 'бланка', 'бланков')}.</div>`
+          : `<div class="txt">Все бланки из списка уйдут обратно в отряды одним действием.</div>
+             <button class="btn big" onclick="вернутьБланкиДосуга()">Вернуть автору: ${возврат.length}</button>`}
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <h3>Реестр одобренных выпусков</h3>
+      <div class="под">Выпуски, которые уходят людям, — главы, страницы тетрадей, задачи — одобряются один раз
+        на весь тираж. Каждый экземпляр вы не читаете.</div>
+      <table class="досуг-табл">
+        <thead><tr><th>Формат</th><th>Текущий выпуск</th><th>Одобрение</th><th style="text-align:right">Подписчиков</th></tr></thead>
+        <tbody>${досугРеестр().map(р => `<tr>
+          <td><b>${esc(р.ф.имя)}</b><div class="top-sub" style="font-size:14px">${esc(р.ф.коротко)}</div></td>
+          <td class="tnum">№ ${р.текущий}</td>
+          <td><span class="chip g">одобрено УФСИН ${р.дата}</span><div class="top-sub" style="font-size:14px; margin-top:4px">формат утверждён ЦА ФСИН</div></td>
+          <td style="text-align:right" class="tnum">${р.подписчиков}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Просьбы «подключите мне» · ${просьбыНедели.length} за неделю</h3>
+      <div class="под">Люди пишут родным, что хотят досуг. Это обычные письма — они идут через ленту цензуры.
+        Здесь делать ничего не нужно.</div>
+      ${просьбыНедели.length ? `<div style="display:flex; gap:8px; flex-wrap:wrap">${
+        д.форматы.map(ф => ({ ф, n: просьбыНедели.filter(п => п[3] === ф.id).length })).filter(x => x.n)
+          .map(x => `<span class="chip a">${esc(x.ф.имя)}: ${x.n}</span>`).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
   const T = {
     queue:       ['Лента цензуры', 'Понедельник, 28 сентября 2026 · смена 08:00–20:00'],
-    card:        ['Материал на проверке', 'Решение принимает цензор'],
+    dosug:       ['Бланки досуга', 'Ответы на бумаге: проверены машиной, утверждаете вы'],
+    card:       ['Материал на проверке', 'Решение принимает цензор'],
     redact:      ['Вымарывание фрагмента', 'Изъятие части текста с сохранением остального'],
     assignments: ['Мои поручения', 'Задания от руководства и системы'],
     archive:     ['Архив решений', 'Решённое за смену, с возможностью пересмотра'],
@@ -8167,7 +8534,7 @@ function render(){
   }[S.view];
   document.getElementById('topTitle').textContent = T[0];
   document.getElementById('topSub').textContent = T[1];
-  ({ queue:renderQueue, card:renderCard, redact:renderRedact,
+  ({ queue:renderQueue, dosug:renderDosug, card:renderCard, redact:renderRedact,
      assignments:renderAssignments, archive:renderArchive, reports:renderReports,
      channel:renderChannel, legal:renderLegal, support:renderSupport,
      feed:renderFeed, people:renderPeople, groups:renderGroups,
