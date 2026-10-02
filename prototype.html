@@ -347,6 +347,46 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .drop-зона b{display:block; font-size:16px; margin-bottom:5px}
 .drop-зона span{color:var(--muted); font-size:14px}
 
+/* ---------- согласия для ZT Рядом ----------
+   Что человек сам разрешил показывать родственникам. Только чтение:
+   сотрудник видит отметки, но не меняет их. */
+.согл{border:1px solid var(--border); border-radius:14px; padding:14px 16px; background:var(--surface); margin:14px 0}
+.согл h4{margin:0 0 10px; font-size:15.5px; font-weight:650}
+.согл-пункт{display:flex; align-items:center; gap:12px; padding:7px 0; font-size:15px;
+  border-top:1px solid var(--border-soft)}
+.согл-пункт:first-of-type{border-top:0}
+.согл-знак{width:28px; height:28px; flex:none; border-radius:8px; display:grid; place-items:center;
+  font-weight:700; font-size:16px}
+.согл-знак.да{background:var(--soft-mint); color:var(--success)}
+.согл-знак.нет{background:var(--bg); color:#9CA3AF; border:1px solid var(--border)}
+.согл-пункт .нет-txt{color:var(--muted); font-size:13.5px; margin-left:auto; white-space:nowrap}
+.согл-номера{margin-top:10px}
+.согл-осн{margin-top:10px; font-size:12.5px; color:var(--muted)}
+.chip.кнопка{cursor:pointer}
+.chip.кнопка:hover{border-color:var(--primary)}
+
+/* Лист бумажного заявления на скане: отметки ручкой. */
+.скан-лист{background:#FFFEF8; border:1.5px solid #9CA3AF; border-radius:6px; padding:18px 20px;
+  font-family:"Times New Roman", Times, serif; color:#111; font-size:16px; margin-bottom:16px;
+  box-shadow:0 2px 8px rgba(31,41,55,.08)}
+.скан-лист .загл{font-weight:700; margin-bottom:10px}
+.скан-стр{display:flex; align-items:center; gap:12px; padding:5px 0}
+.скан-кв{width:26px; height:26px; flex:none; border:2px solid #111; display:grid; place-items:center}
+.скан-кв.да::after{content:'✓'; color:#1E3A8A; font-family:"Segoe Print","Comic Sans MS",cursive;
+  font-size:24px; font-weight:700; transform:rotate(-8deg) translate(2px,-4px)}
+.скан-лист .подп{margin-top:10px; color:#1E3A8A; font-family:"Segoe Print","Comic Sans MS",cursive; font-size:15px}
+
+/* Экран терминала, на котором человек ставил отметки сам. */
+.терм-экран{background:#111827; color:#F9FAFB; border-radius:16px; padding:18px 20px; margin-bottom:16px;
+  border:6px solid #374151}
+.терм-экран .загл{font-weight:700; font-size:16px; margin-bottom:12px}
+.терм-стр{display:flex; align-items:center; gap:12px; padding:9px 12px; margin-bottom:8px;
+  border-radius:10px; background:#1F2937; font-size:15px}
+.терм-кв{width:26px; height:26px; flex:none; border-radius:6px; border:2px solid #9CA3AF;
+  display:grid; place-items:center; font-weight:700}
+.терм-кв.да{background:var(--success); border-color:var(--success); color:#fff}
+.терм-кв.да::after{content:'✓'}
+
 /* ---------- граф связей ----------
    Радиальная раскладка: человек в центре, контакты по кругу.
    Красным — связи, поднятые системой; серым пунктиром — обычные. */
@@ -6080,6 +6120,96 @@ const ИСТОЧНИК_ПОДПИСЬ = {
   цензор:   ['От цензора', 'появился из входящего письма'],
 };
 
+/* ---------- согласия для ZT Рядом ----------
+   В заявлении на связь человек сам отмечает, что приложение ZT Рядом может
+   показывать родственникам, чьи номера он вписал. Без первой отметки
+   родственники не видят его в приложении вовсе. Здесь — только чтение.
+   consent = [источник, днейНазад, номера контактов, [имя, др, терминал, забота]] или null. */
+const СОГЛАСИЯ_ПУНКТЫ = [
+  'Моё имя и учреждение',
+  'Мою дату рождения',
+  'Есть ли у меня видеотерминал',
+  'Согласен получать «Заботу каждый день» и отправлять бланки ответов',
+];
+const СОГЛАСИЯ_ОСНОВАНИЕ = 'Основание: заявление самого человека (договор и согласие, 152-ФЗ ст. 6). Отозвать — новым заявлением или на терминале.';
+
+function согласияЗаявления(z){
+  if (!z || !Array.isArray(z.consent)) return null;
+  const [источник, дней, номера, г] = z.consent;
+  /* Отметки стоят в том же заявлении. Если человека внёс цензор,
+     согласия взяты из его прежнего заявления — там свой источник. */
+  const где = z.source === 'бумага' || z.source === 'терминал' ? z.source : источник;
+  return { где, дней, номера: номера || [], отметки: (г || []).map(Boolean) };
+}
+
+function значокСогласий(z){
+  const с = согласияЗаявления(z);
+  if (!с) return `<span class="chip кнопка" role="button" onclick="открытьСогласия('${z.id}')"
+    title="Родственники в ZT Рядом его не видят">ZT Рядом: нет согласий</span>`;
+  const да = с.отметки.filter(Boolean).length;
+  return `<span class="chip кнопка ${с.отметки[0] ? 'g' : ''}" role="button" onclick="открытьСогласия('${z.id}')"
+    title="Что разрешил показывать родственникам — нажмите, чтобы посмотреть">ZT Рядом: ${да} из ${СОГЛАСИЯ_ПУНКТЫ.length}</span>`;
+}
+
+function блокСогласий(z){
+  const с = согласияЗаявления(z);
+  if (!с) return `<div class="согл"><h4>Что разрешил показывать родственникам в ZT Рядом</h4>
+    <div style="color:var(--muted)">Согласий нет: родственники в ZT Рядом его не видят.</div>
+    <div class="согл-осн">${esc(СОГЛАСИЯ_ОСНОВАНИЕ)}</div></div>`;
+  const p = POP.поId[z.pid];
+  const номера = с.номера.map(i => {
+    const c = p && p.contacts[i];
+    return c ? `<div class="citem"><div><div class="w">${esc(c.name)}</div>
+        <div class="s">${esc(c.role)} · ${esc(c.phone)} · ${c.verified ? 'подтверждён' : 'не подтверждён'}</div></div></div>`
+      : `<div class="citem"><div><div class="w">Контакт № ${i + 1}</div><div class="s">нет в перечне</div></div></div>`;
+  }).join('');
+  return `<div class="согл">
+    <h4>Что разрешил показывать родственникам в ZT Рядом</h4>
+    ${СОГЛАСИЯ_ПУНКТЫ.map((т, i) => `<div class="согл-пункт">
+      <span class="согл-знак ${с.отметки[i] ? 'да' : 'нет'}">${с.отметки[i] ? '✓' : '✗'}</span>
+      <span>${esc(т)}</span>${с.отметки[i] ? '' : '<span class="нет-txt">не разрешил</span>'}</div>`).join('')}
+    ${с.отметки[0] ? '' : `<div class="note warn" style="margin:10px 0 0">Имя и учреждение не разрешены —
+      родственники в ZT Рядом его не видят, остальные отметки не действуют.</div>`}
+    <div class="согл-номера">
+      <div class="top-sub" style="margin-bottom:8px">Отметил ${с.где === 'терминал' ? 'на терминале' : 'на бумаге'}${
+        z.source === 'цензор' ? `, ${esc(String(с.дней))} дн. назад` : ''} · для номеров (${с.номера.length}):</div>
+      ${с.номера.length ? `<div class="clist">${номера}</div>` : '<div style="color:var(--muted)">Номеров не указал.</div>'}
+    </div>
+    <div class="согл-осн">${esc(СОГЛАСИЯ_ОСНОВАНИЕ)}</div>
+  </div>`;
+}
+
+/* Отметки так, как их поставил человек: ручкой на бланке или на экране терминала. */
+function листСогласий(z, где){
+  const с = согласияЗаявления(z);
+  if (!с) return '';
+  if (где === 'терминал') return `<div class="терм-экран">
+      <div class="загл">ZT Рядом: что могут видеть мои родственники</div>
+      ${СОГЛАСИЯ_ПУНКТЫ.map((т, i) => `<div class="терм-стр">
+        <span class="терм-кв ${с.отметки[i] ? 'да' : ''}"></span><span>${esc(т)}</span></div>`).join('')}
+    </div>`;
+  return `<div class="скан-лист">
+      <div class="загл">Разрешаю приложению ZT Рядом показывать родственникам по указанным номерам:</div>
+      ${СОГЛАСИЯ_ПУНКТЫ.map((т, i) => `<div class="скан-стр">
+        <span class="скан-кв ${с.отметки[i] ? 'да' : ''}"></span><span>${esc(т.charAt(0).toLowerCase() + т.slice(1))}</span></div>`).join('')}
+      <div class="подп">${esc(String(z.person || '').split(' ')[0])}</div>
+    </div>`;
+}
+
+function открытьСогласия(id){
+  const z = ЗАЯВЛЕНИЯ.find(x => x.id === id); if (!z) return;
+  const с = согласияЗаявления(z);
+  modal(`
+    <div class="mh"><div><h3>Согласия для ZT Рядом</h3>
+      <div class="top-sub">${esc(z.id)} · ${esc(z.person)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${с ? листСогласий(z, с.где) : ''}
+      ${блокСогласий(z)}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+}
+
 /* Можно ли человеку что-то кроме текста. */
 function толькоТекст(pid){
   const p = POP.поId[pid];
@@ -6103,6 +6233,7 @@ function блокВходящих(){
           <span class="chip ${z.source === 'цензор' ? 'o' : ''}" title="${esc(пояснение)}">${esc(подпись)}</span>
           <span class="chip">${esc(z.at)}</span>
           ${z.letter ? `<span class="chip">письмо ${esc(z.letter)}</span>` : ''}
+          ${значокСогласий(z)}
         </div>
       </div>
       <div>
@@ -6146,13 +6277,14 @@ function блокВходящих(){
     <h2 class="sect">Разобрано за три месяца · ${разобранные().length}</h2>
     <div class="журнал">
       <table class="журнал-таб" style="min-width:0">
-        <thead><tr><th>№</th><th>Дата</th><th>Человек</th><th>Путь</th><th>Просил</th><th>Итог</th><th>Кто</th></tr></thead>
+        <thead><tr><th>№</th><th>Дата</th><th>Человек</th><th>Путь</th><th>Просил</th><th>ZT Рядом</th><th>Итог</th><th>Кто</th></tr></thead>
         <tbody>${разобранные().slice(0, 25).map(z => `
           <tr>
             <td>${esc(z.id)}</td><td class="tnum">${esc(z.at)}</td>
             <td>${esc(z.person)}</td>
             <td>${esc((ИСТОЧНИК_ПОДПИСЬ[z.source] || [z.source])[0])}</td>
             <td>${esc(z.want)}</td>
+            <td>${значокСогласий(z)}</td>
             <td><span class="chip ${z.status === 'подтверждено' ? 'g' : 'r'}">${esc(z.status)}</span></td>
             <td>${esc(z.by || '')}</td>
           </tr>`).join('')}</tbody>
@@ -6207,6 +6339,8 @@ function внестиВручную(id, распознано){
         <label class="fld">Телефон<input id="regPhone" value="${esc(z.phone)}"></label>
       </div>
 
+      ${блокСогласий(z)}
+
       ${р ? `<div class="note warn">Распознавание рукописного текста ошибается на фамилиях
         и номерах. Сверьте их со сканом до сохранения.</div>` : ''}
     </div>
@@ -6230,6 +6364,7 @@ function сканЗаявления(id){
         <b>Заявление отсканировано</b>
         <span>заявление_${esc(z.id)}.pdf · 1 лист · рукописный текст</span>
       </div>
+      ${листСогласий(z, 'бумага')}
       <div class="note">Распознавание вытащит из скана ФИО, дату рождения, отряд и заявленные
         контакты и подставит их в карточку. Скан останется приложенным — на него ссылаются
         при проверке, и он подтверждает, что бумага была.</div>
