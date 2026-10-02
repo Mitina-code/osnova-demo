@@ -339,6 +339,19 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .листалка .btn[disabled]{opacity:.35; cursor:default}
 .лист-номер{color:var(--muted); font-size:12.5px; padding:0 4px; white-space:nowrap}
 
+/* Плеер записи: дорожка во всю ширину, под ней — кнопка и границы времени.
+   Красная отметка на дорожке — место значимой фразы. */
+.плеер{border:1.5px solid var(--border); border-radius:14px; padding:14px 16px; background:var(--bg)}
+.дорожка{display:block; width:100%; height:44px}
+.плеер-низ{display:flex; align-items:center; gap:12px; margin-top:10px; flex-wrap:wrap}
+.плеер-низ .btn[disabled]{opacity:.5; cursor:not-allowed}
+
+/* Расшифровка: время, кто говорит, текст — тремя колонками. */
+.расш{display:grid; grid-template-columns:54px minmax(110px, auto) 1fr; gap:8px 14px; align-items:baseline}
+.расш-т{color:var(--muted); font-size:12.5px}
+.расш-кто{color:var(--muted); font-size:13px}
+.расш-текст{line-height:1.5}
+
 /* ---------- зона скана заявления ---------- */
 .drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
   text-align:center; background:var(--bg); margin-bottom:16px}
@@ -922,6 +935,8 @@ const S = {
   вкладкаДосье:'main',       // раздел внутри досье
   архивПериод:'week',        // смена, неделя, месяц, три месяца
   журналПериод:'week',       // период журнала регистрации
+  звПериод:'last', звПоиск:'', звВид:'all', звУровень:'all',
+  звДата:null, звС:null, звПо:null,   // поиск по записям переговоров
   доступЧерновик:null,       // наборы разделов, пока их правят
   архивРешение:'all', архивКанал:'all', архивРиск:'all',
   записьТекст:'',
@@ -1052,6 +1067,7 @@ const РАЗДЕЛЫ = {
   complaints:  [ICON.complaints, 'Жалобы и проверки'],
   live:        [ICON.live,       'Контроль переговоров'],
   completed:   [ICON.completed,  'Завершённые сегодня'],
+  recordings:  [ICON.archive,     'Архив записей'],
   assignments: [ICON.tasks,      'Мои поручения'],
   orders:      [ICON.tasks,      'Поручения'],
   appeals:     [ICON.complaints, 'Обращения'],
@@ -1068,7 +1084,7 @@ const РОЛИ = {
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
                 разделы:['facility','signing','orders','appeals','complaints','audit','staff','services','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
-                разделы:['live','completed','assignments','channel','support','legal'] },
+                разделы:['live','completed','recordings','assignments','channel','support','legal'] },
 };
 
 function сменитьРоль(r){
@@ -1091,6 +1107,7 @@ function renderNav(){
     people: ROL.persons.length,
     groups: LIVE.groups.length,
     live: LIVE.calls.filter(c=>!c.ended).length,
+    recordings: (ROL.callArchive || []).length,
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
     staff: LIVE.staff.filter(x=>x.review).length,
     signing: наПодписьВсего(),
@@ -8639,6 +8656,401 @@ function renderDosug(){
   </div>`;
 }
 
+/* ================== АРХИВ ЗАПИСЕЙ ПЕРЕГОВОРОВ ==================
+
+   Контроль вживую берёт единицы разговоров из сотни. Остальное разбирается
+   задним числом, когда появилось основание: запрос, имя в деле, рапорт.
+   Поэтому архив устроен вокруг поиска, а не вокруг ленты.
+
+   Искать можно по тому, что обычно известно: фамилия, дата, период.
+   Номер записи не знает никто, поэтому он не главный.
+
+   Рядом лежат запись и текст. Слушать сорок минут ради одной фразы никто
+   не станет: читают расшифровку, а запись слушают там, где нашли.
+   Отметки на дорожке показывают, где именно.
+
+   Чего нет: самого звука. Подкладывать синтетическую запись вместо
+   разговора нельзя — это создаёт впечатление, что система воспроизводит
+   то, чего у неё нет. Длительность, дорожка и отметки настоящие,
+   кнопка воспроизведения честно сказана как недоступная в прототипе.
+*/
+
+const ЗВ_АРХИВ = ROL.callArchive || [];
+const ЗВ_СВОДКА = ROL.callSummary || null;
+const ДИАЛОГИ = ROL.dialogues || [];
+const ЗВ_ОРАНЖ = ROL.callInsertsOrange || [];
+const ЗВ_КРАСН = ROL.callInsertsRed || [];
+const ЗВ_КОНТРОЛЁРЫ = ROL.callOperators || ['Белова Н.В., контроль переговоров'];
+
+const ЗВ_СМЕНА = new Date(2026, 8, 28);
+
+function звДата(днейНазад){
+  return new Date(ЗВ_СМЕНА.getFullYear(), ЗВ_СМЕНА.getMonth(), ЗВ_СМЕНА.getDate() - днейНазад);
+}
+function звДатаСтрока(д){ return дв(д.getDate()) + '.' + дв(д.getMonth() + 1) + '.' + д.getFullYear(); }
+function звISO(д){ return д.getFullYear() + '-' + дв(д.getMonth() + 1) + '-' + дв(д.getDate()); }
+function звИзISO(s){ const ч = String(s || '').split('-');
+  return ч.length === 3 ? new Date(+ч[0], +ч[1] - 1, +ч[2]) : null; }
+function звДлит(сек){ return дв(Math.floor(сек / 60)) + ':' + дв(сек % 60); }
+
+/* Разворот одной записи. Текст расшифровки собирается здесь же: в файле
+   его нет, есть только номер диалога и номер вставки. */
+function звЗапись(z){
+  const [id, днейНазад, минута, номерЧеловека, ci, видео, секунд, риск, диалог, вставка, наКонтроле, прерван] = z;
+  const p = POP.поId['p' + номерЧеловека] || null;
+  const контакт = p && p.contacts[ci] ? p.contacts[ci] : null;
+  const д = звДата(днейНазад);
+  return {
+    id, днейНазад, секунд,
+    номер: 'ЗП-' + (100000 + id),
+    дата: звДатаСтрока(д), дataISO: звISO(д), датаОбъект: д,
+    время: дв(Math.floor(минута / 60)) + ':' + дв(минута % 60),
+    pid: p ? p.id : null,
+    человек: p ? p.name : '—',
+    место: p ? местоЧеловека(p) : '—',
+    статья: p ? p.article : '',
+    контакт: контакт ? контакт.name : '—',
+    телефон: контакт ? контакт.phone : '—',
+    роль: контакт ? контакт.role : '',
+    защищён: !!(контакт && контакт.protected),
+    вид: видео ? 'видеосвидание' : 'телефонный разговор',
+    /* Заголовок документа требует родительного падежа:
+       «расшифровка телефонного разговора», «расшифровка видеосвидания». */
+    видРод: видео ? 'видеосвидания' : 'телефонного разговора',
+    видео: !!видео,
+    устройство: видео ? 'ИВТ ' + (1 + id % 7) : 'Телефон ' + (1 + id % 46),
+    риск: ['green', 'orange', 'red'][риск],
+    уровень: риск,
+    диалог, вставка,
+    наКонтроле: !!наКонтроле,
+    прерван: !!прерван,
+    контролёр: ЗВ_КОНТРОЛЁРЫ[id % ЗВ_КОНТРОЛЁРЫ.length],
+    длительность: звДлит(секунд),
+  };
+}
+
+let ЗВ_КЭШ = null;
+function звВсе(){ if (!ЗВ_КЭШ) ЗВ_КЭШ = ЗВ_АРХИВ.map(звЗапись); return ЗВ_КЭШ; }
+
+/* Расшифровка: реплики диалога, разложенные по длительности разговора,
+   плюс вставка, из-за которой он попал на заметку. */
+function звРасшифровка(з){
+  const д = ДИАЛОГИ[з.диалог]; if (!д) return { реплики: [], повод: null };
+  const реплики = д.реплики.map(([доля, сторона, текст]) => ({
+    сек: Math.round(доля * з.секунд), сторона, текст, отмечено: false,
+  }));
+  let повод = null;
+  if (з.вставка >= 0) {
+    const и = (з.уровень === 1 ? ЗВ_ОРАНЖ : ЗВ_КРАСН)[з.вставка];
+    if (и) {
+      повод = и.повод;
+      /* Значимая фраза встаёт в середину разговора: за ней следят
+         от середины, а не с первой секунды. */
+      const место = Math.floor(реплики.length * 0.55);
+      реплики.splice(место, 0, {
+        сек: Math.round(з.секунд * 0.55), сторона: 0, текст: и.текст, отмечено: true,
+      });
+    }
+  }
+  return { реплики, повод, тема: д.тема };
+}
+
+/* Звуковая дорожка. Рисуется из номера записи, поэтому у одного разговора
+   всегда одна и та же, а отметка стоит там, где звучит значимая фраза. */
+function звДорожка(з){
+  const полос = 76;
+  const отметка = з.вставка >= 0 ? Math.round(полос * 0.55) : -1;
+  let сид = з.id * 2654435761 % 2147483647;
+  const шаг = () => { сид = (сид * 1103515245 + 12345) % 2147483648; return сид / 2147483648; };
+  const полосы = [];
+  for (let i = 0; i < полос; i++) {
+    const h = 6 + Math.round(шаг() * 26 + (Math.sin(i / 5) + 1) * 5);
+    const рядом = отметка >= 0 && Math.abs(i - отметка) <= 1;
+    полосы.push(`<rect x="${i * 4}" y="${22 - h / 2}" width="2.4" height="${h}" rx="1.2"
+      fill="${рядом ? 'var(--danger)' : 'var(--border)'}"/>`);
+  }
+  return `<svg class="дорожка" viewBox="0 0 ${полос * 4} 44" role="img"
+    aria-label="Звуковая дорожка записи">${полосы.join('')}</svg>`;
+}
+
+/* ---------- поиск ---------- */
+
+const ЗВ_ПЕРИОДЫ = [
+  ['last', 'Последние'],
+  ['day', 'На дату'],
+  ['range', 'За период'],
+  ['all', 'Все три месяца'],
+];
+
+function звОтфильтрованные(){
+  const режим = S.звПериод || 'last';
+  const q = (S.звПоиск || '').trim().toLowerCase();
+  let список = звВсе();
+
+  if (режим === 'last') список = список.filter(з => з.днейНазад <= 7);
+  else if (режим === 'day') {
+    const д = звИзISO(S.звДата);
+    if (д) список = список.filter(з => з.дataISO === звISO(д));
+  } else if (режим === 'range') {
+    const с = звИзISO(S.звС), по = звИзISO(S.звПо);
+    if (с && по) список = список.filter(з => з.датаОбъект >= с && з.датаОбъект <= по);
+  }
+
+  if (S.звВид && S.звВид !== 'all') список = список.filter(з => (з.видео ? 'video' : 'audio') === S.звВид);
+  if (S.звУровень && S.звУровень !== 'all') {
+    if (S.звУровень === 'marked') список = список.filter(з => з.уровень > 0);
+    else if (S.звУровень === 'broken') список = список.filter(з => з.прерван);
+    else список = список.filter(з => з.риск === S.звУровень);
+  }
+  if (q) список = список.filter(з =>
+    (з.человек + ' ' + з.контакт + ' ' + з.телефон + ' ' + з.номер + ' ' + з.место).toLowerCase().includes(q));
+
+  return список.sort((a, b) => a.днейНазад - b.днейНазад || b.время.localeCompare(a.время));
+}
+
+/* ---------- карточка записи ---------- */
+
+function открытьЗапись(id){
+  const з = звВсе().find(x => x.id === Number(id)); if (!з) return;
+  const р = звРасшифровка(з);
+  modal(`
+    <div class="mh"><div><h3>${esc(з.номер)}</h3>
+      <div class="top-sub">${esc(з.дата)} ${esc(з.время)} · ${esc(з.вид)} · ${esc(з.длительность)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${з.защищён ? `<div class="note warn" style="margin-top:0"><b>Переговоры с защитником.</b>
+        Контроль содержания не проводится: фиксируются только факт, дата и длительность.
+        Расшифровка не ведётся.</div>` : ''}
+
+      <div class="kv">
+        <div class="k">${S.facility === 'сизо' ? 'Подозреваемый' : 'Осуждённый'}</div>
+        <div>${esc(з.человек)}, ${esc(з.место)}${з.статья ? ' · ст. ' + esc(з.статья) : ''}</div>
+        <div class="k">Собеседник</div>
+        <div>${esc(з.контакт)}${з.роль ? ' · ' + esc(з.роль) : ''} · ${esc(з.телефон)}</div>
+        <div class="k">Устройство</div><div>${esc(з.устройство)}</div>
+        <div class="k">Оценка</div>
+        <div><span class="chip ${RISK_LETTER[з.риск]}">${esc(RISK_ONE[з.риск])}</span>
+          ${з.наКонтроле ? '<span class="chip a">брали на контроль вживую</span>' : '<span class="chip">вживую не слушали</span>'}
+          ${з.прерван ? '<span class="chip r">разговор прерван</span>' : ''}</div>
+        ${р.повод ? `<div class="k">Причина отметки</div><div>${esc(р.повод)}</div>` : ''}
+      </div>
+
+      <h3 style="margin:20px 0 8px; font-size:16px">Запись</h3>
+      <div class="плеер">
+        ${звДорожка(з)}
+        <div class="плеер-низ">
+          <button class="btn sm" disabled title="В прототипе звука нет: подкладывать синтетическую запись вместо разговора нельзя">▶ Воспроизвести</button>
+          <span class="top-sub">00:00 — ${esc(з.длительность)}${з.вставка >= 0 ? ' · красная отметка — место значимой фразы' : ''}</span>
+        </div>
+      </div>
+      <div class="top-sub" style="margin-top:8px">В прототипе доступна только дорожка:
+        самой аудиозаписи здесь нет. В продукте по этой кнопке играет оригинал из хранилища.</div>
+
+      ${з.защищён ? '' : `
+        <h3 style="margin:20px 0 8px; font-size:16px">Расшифровка${р.тема ? ' · ' + esc(р.тема) : ''}</h3>
+        <div class="расш">
+          ${р.реплики.map(в => `
+            <div class="расш-т tnum">${звДлит(в.сек)}</div>
+            <div class="расш-кто">${в.сторона === 0 ? esc(звКороткоФИО(з.человек)) : esc(звКороткоФИО(з.контакт))}</div>
+            <div class="расш-текст">${в.отмечено ? `<mark${з.риск === 'red' ? ' class="r"' : ''}>${esc(в.текст)}</mark>` : esc(в.текст)}</div>`).join('')}
+        </div>`}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      ${з.pid ? `<button class="btn" onclick="closeModal(); сменитьРоль('operative'); открытьДосье('${з.pid}')">Досье</button>` : ''}
+      ${з.защищён ? '' : `<button class="btn primary" onclick="печатьРасшифровки(${з.id})">${ICON.printer} Печать расшифровки</button>`}
+    </div>`);
+}
+
+/* Контролёр записан как «Белова Н.В., контроль переговоров»: фамилия
+   уже сокращена, второй раз её сокращать нечем. Отделяем должность. */
+function звДолжность(строка){
+  const ч = String(строка).split(',');
+  const д = (ч[1] || 'контроль переговоров').trim();
+  return д.charAt(0).toUpperCase() + д.slice(1);
+}
+
+function звКороткоФИО(фио){
+  const ч = String(фио || '').trim().split(/\s+/);
+  return ч.length >= 2 ? ч[0] + ' ' + ч[1].charAt(0) + '.' : (ч[0] || '—');
+}
+
+/* ---------- печать расшифровки ----------
+
+   Документ, на который ссылаются в рапорте и который приобщают к делу.
+   Реквизиты по ГОСТ Р 7.0.97-2016, Times New Roman.
+*/
+function печатьРасшифровки(id){
+  const з = звВсе().find(x => x.id === Number(id)); if (!з) return;
+  const р = звРасшифровка(з);
+  const ф = У();
+  const строка = (к, v) => `<div class="бл-к">${esc(к)}</div><div class="бл-з">${esc(v)}</div>`;
+
+  печатьДокумента(`
+    <div class="бланк последний">
+      <div class="бл-верх"><div class="бл-орг">
+        ФЕДЕРАЛЬНАЯ СЛУЖБА ИСПОЛНЕНИЯ НАКАЗАНИЙ<br>
+        ${esc(ф.parent || '')}<br>${esc(ф.full || '')}<br>(${esc(ф.short || '')})
+      </div></div>
+
+      <div class="бл-вид">РАСШИФРОВКА</div>
+
+      <div class="бл-рек"><span>${esc(сегодняДок())}</span><span>№ ${esc(з.номер)}</span></div>
+      <div class="бл-место">${esc(ф.city || '')}</div>
+
+      <div class="бл-загол">${esc(з.видРод)}, состоявш${з.видео ? 'егося' : 'егося'} ${esc(з.дата)}</div>
+
+      <div class="бл-свед">
+        ${строка('Дата и время', з.дата + ', ' + з.время)}
+        ${строка('Вид связи', з.вид)}
+        ${строка('Устройство', з.устройство)}
+        ${строка('Длительность', з.длительность)}
+        ${строка(S.facility === 'сизо' ? 'Подозреваемый, обвиняемый' : 'Осуждённый',
+          з.человек + ', ' + з.место + (з.статья ? ', ст. ' + з.статья : ''))}
+        ${строка('Собеседник', з.контакт + (з.роль ? ' (' + з.роль + ')' : '') + ', ' + з.телефон)}
+        ${строка('Оценка системы', RISK_ONE[з.риск] + (р.повод ? ' — ' + р.повод : ''))}
+        ${строка('Контроль в реальном времени', з.наКонтроле ? 'осуществлялся' : 'не осуществлялся')}
+        ${з.прерван ? строка('Решение', 'разговор прерван') : ''}
+      </div>
+
+      <div class="бл-подзаг">Содержание разговора</div>
+      <table class="бл-таб">
+        <colgroup><col style="width:11%"><col style="width:26%"><col style="width:63%"></colgroup>
+        <tr><th>Время</th><th>Говорит</th><th>Текст</th></tr>
+        ${р.реплики.map(в => `<tr>
+          <td>${звДлит(в.сек)}</td>
+          <td>${esc(в.сторона === 0 ? з.человек : з.контакт)}</td>
+          <td>${в.отмечено ? '<b>' + esc(в.текст) + '</b>' : esc(в.текст)}</td>
+        </tr>`).join('')}
+      </table>
+
+      ${р.повод ? `<p class="бл-абз"><b>Отмечено системой:</b> ${esc(р.повод)}.
+        Соответствующая реплика выделена в тексте.</p>` : ''}
+
+      <p class="бл-абз">Расшифровка составлена средствами информационной системы
+        по аудиозаписи, хранящейся в учреждении под номером ${esc(з.номер)}.</p>
+
+      <div class="бл-подписи">
+        <div class="бл-подпись">
+          <span class="бл-кто">${esc(звДолжность(з.контролёр))} ${esc(ф.short || '')}</span>
+          <span class="бл-линия"></span>
+          <span class="бл-имя">${esc(з.контролёр.split(',')[0].trim())}</span>
+        </div>
+        <div class="бл-дата">«____» ____________ 2026 г.</div>
+      </div>
+    </div>`);
+}
+
+/* ---------- экран ---------- */
+
+function renderCallArchive(){
+  const список = звОтфильтрованные();
+  const показ = список.slice(0, S.shown);
+  const режим = S.звПериод || 'last';
+  const отмечено = список.filter(з => з.уровень > 0).length;
+  const часов = Math.round(список.reduce((s, з) => s + з.секунд, 0) / 3600);
+
+  const ряд = (ключ, значения, текущее, подпись) => `
+    <span class="lab">${подпись}:</span>
+    <div class="seg">
+      ${значения.map(([к, имя]) =>
+        `<button class="${текущее === к ? 'on' : ''}" onclick="S.${ключ}='${к}'; S.shown=30; render()">${имя}</button>`).join('')}
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Архив записей</h1>
+      <p>Записи хранятся с первого дня работы. Разбор чаще идёт задним числом:
+         основание появляется позже самого разговора.</p></div>
+
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.live}</div>
+        <div class="k">Записей в выборке</div><div class="v tnum">${список.length}</div>
+        <div class="d">из ${звВсе().length} за три месяца</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-blue); color:#2563EB">${ICON.time}</div>
+        <div class="k">Длительность</div><div class="v tnum">${часов}</div>
+        <div class="d">часов записи в выборке</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.alert}</div>
+        <div class="k">С отметкой системы</div><div class="v tnum">${отмечено}</div>
+        <div class="d">оранжевые и красные</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
+        <div class="k">Прервано</div><div class="v tnum">${список.filter(з => з.прерван).length}</div>
+        <div class="d">по основанию, с докладом</div></div>
+    </div>
+
+    ${ЗВ_СВОДКА ? `<div class="note">Всего в архиве ${ЗВ_СВОДКА.всего}
+      ${plural(ЗВ_СВОДКА.всего, 'запись', 'записи', 'записей')} за ${ЗВ_СВОДКА.дней} дней —
+      ${ЗВ_СВОДКА.вДень} в день, ${ЗВ_СВОДКА.часов} часов. Вживую успели взять на контроль
+      ${ЗВ_СВОДКА.наКонтроле}: это ${Math.round(ЗВ_СВОДКА.наКонтроле / ЗВ_СВОДКА.всего * 100)}% потока,
+      остальное разбирается здесь.</div>` : ''}
+
+    <div class="bar">
+      ${ряд('звПериод', ЗВ_ПЕРИОДЫ, режим, 'Когда')}
+    </div>
+
+    ${режим === 'day' ? `<div class="bar">
+      <span class="lab">Дата:</span>
+      <input type="date" id="звДата" value="${esc(S.звДата || звISO(звДата(1)))}"
+        min="${звISO(звДата(90))}" max="${звISO(звДата(1))}"
+        onchange="S.звДата=this.value; S.shown=30; render()">
+    </div>` : ''}
+
+    ${режим === 'range' ? `<div class="bar">
+      <span class="lab">С:</span>
+      <input type="date" id="звС" value="${esc(S.звС || звISO(звДата(30)))}"
+        min="${звISO(звДата(90))}" max="${звISO(звДата(1))}"
+        onchange="S.звС=this.value; S.shown=30; render()">
+      <span class="lab">по:</span>
+      <input type="date" id="звПо" value="${esc(S.звПо || звISO(звДата(1)))}"
+        min="${звISO(звДата(90))}" max="${звISO(звДата(1))}"
+        onchange="S.звПо=this.value; S.shown=30; render()">
+    </div>` : ''}
+
+    <div class="bar">
+      ${ряд('звВид', [['all','Все'],['audio','Телефон'],['video','Видеосвидания']], S.звВид || 'all', 'Вид')}
+      ${ряд('звУровень', [['all','Все'],['marked','С отметкой'],['red','Красные'],['broken','Прерванные']],
+        S.звУровень || 'all', 'Оценка')}
+    </div>
+
+    <div class="bar">
+      <input id="звq" class="search" placeholder="Поиск по фамилии, собеседнику, телефону или номеру записи"
+             value="${esc(S.звПоиск || '')}"
+             oninput="вводПоиска('звq', v => { S.звПоиск = v; S.shown = 30; renderCallArchive(); })">
+      <span class="chip">${показ.length} из ${список.length}</span>
+    </div>
+
+    ${список.length ? `
+      <div class="rows">
+        ${показ.map(з => `
+          <div class="row" onclick="открытьЗапись(${з.id})" style="cursor:pointer">
+            <div class="stripe ${з.прерван ? 'r' : RISK_LETTER[з.риск]}"></div>
+            <div>
+              <div class="who">${esc(з.человек)}</div>
+              <div class="meta">${esc(з.место)} · ${esc(з.контакт)}${з.роль ? ' · ' + esc(з.роль) : ''}</div>
+              <div class="marks">
+                <span class="chip">${esc(з.номер)}</span>
+                <span class="chip">${esc(з.вид)}</span>
+                <span class="chip">${esc(з.длительность)}</span>
+                ${з.уровень ? `<span class="chip ${RISK_LETTER[з.риск]}">${esc(RISK_ONE[з.риск])}</span>` : ''}
+                ${з.наКонтроле ? '<span class="chip a">слушали вживую</span>' : ''}
+                ${з.прерван ? '<span class="chip r">прерван</span>' : ''}
+                ${з.защищён ? '<span class="chip a">защищённые переговоры</span>' : ''}
+              </div>
+            </div>
+            <div>
+              <div class="sum tnum">${esc(з.дата)} ${esc(з.время)}</div>
+              <div class="why">${esc(з.телефон)} · ${esc(з.устройство)}</div>
+            </div>
+            <div class="acts"><button class="btn sm primary" onclick="event.stopPropagation(); открытьЗапись(${з.id})">Открыть</button></div>
+          </div>`).join('')}
+      </div>
+      ${список.length > показ.length
+        ? `<div class="more"><button class="btn" onclick="S.shown += 60; renderCallArchive()">Показать ещё</button>
+           <span class="chip">показано ${показ.length} из ${список.length}</span></div>` : ''}`
+      : `<div class="empty"><div class="big">${ICON.live}</div><b>Записей не найдено</b>
+         <div>Попробуйте другой период или снимите фильтры.</div></div>`}
+  `;
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
@@ -8674,6 +9086,7 @@ function render(){
     complaints:  ['Жалобы и проверки', 'Обращения граждан и надзорных органов'],
     live:        ['Контроль переговоров', 'Разговоры, которые идут сейчас'],
     completed:   ['Завершённые сегодня', 'Чем закончились разговоры смены'],
+    recordings:  ['Архив записей', 'Записи переговоров за три месяца с расшифровками'],
   }[S.view];
   document.getElementById('topTitle').textContent = T[0];
   document.getElementById('topSub').textContent = T[1];
@@ -8684,7 +9097,7 @@ function render(){
      group:renderGroup, opreports:renderOpReports,
      facility:renderFacility, audit:renderAudit, services:renderServices,
      staff:renderStaff, complaints:renderComplaints,
-     live:renderLive, completed:renderCompleted,
+     live:renderLive, completed:renderCompleted, recordings:renderCallArchive,
      register:renderRegister, profile:renderProfile,
      signing:renderSigning, handed:renderHanded,
      orders:renderOrders, appeals:renderAppeals,
