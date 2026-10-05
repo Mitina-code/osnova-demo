@@ -678,6 +678,14 @@ a.btn{text-decoration:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 .изм-метка{margin-left:8px;font:600 13px/1.4 inherit;font-family:inherit;color:#8A5A00;background:#FFF1C2;border-radius:6px;padding:1px 6px}
 .согл-изм{background:#FFF8E1;border-color:#F2D27A}
+/* заявления на связь у контролёра звонков */
+.кз-пров{display:flex; flex-direction:column; gap:8px}
+.кз-п{display:grid; grid-template-columns:28px 1fr auto; gap:10px; align-items:center; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:var(--surface)}
+.кз-знак{width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700}
+.кз-п.да .кз-знак{background:var(--soft-mint); color:var(--success)}
+.кз-п.нет{border-color:#F6C6DC}
+.кз-п.нет .кз-знак{background:var(--soft-pink); color:var(--danger)}
+.кз-п.вним .кз-знак{background:var(--soft-beige); color:var(--warning)}
 </style>
 
 <div class="app">
@@ -930,6 +938,7 @@ const S = {
   facility:'ик',             // тип учреждения: ик | сизо
   признаки:null, имяГруппы:'', режимГруппы:'signal', поискГруппы:'',
   сортировкаЛюдей:'default', фильтрЛюдей:'all',
+  кзФильтр:'all',            // фильтр заявлений у контролёра звонков
   вкладкаЛюдей:'card',       // картотека или входящие
   видДокумента:'all',        // фильтр на экране подписи
   вкладкаДосье:'main',       // раздел внутри досье
@@ -1065,6 +1074,7 @@ const РАЗДЕЛЫ = {
   services:    [ICON.services,   'Сервисы'],
   staff:       [ICON.staff,      'Доступы сотрудников'],
   complaints:  [ICON.complaints, 'Жалобы и проверки'],
+  connreq:     [ICON.inbox,      'Заявления на связь'],
   live:        [ICON.live,       'Контроль переговоров'],
   completed:   [ICON.completed,  'Завершённые сегодня'],
   recordings:  [ICON.archive,     'Архив записей'],
@@ -1083,8 +1093,8 @@ const РОЛИ = {
                 разделы:['situation','prevention','handed','signals','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
                 разделы:['facility','signing','orders','appeals','complaints','audit','staff','services','channel','support','legal'] },
-  controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'live',
-                разделы:['live','completed','recordings','assignments','channel','support','legal'] },
+  controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'connreq',
+                разделы:['connreq','live','completed','recordings','assignments','channel','support','legal'] },
 };
 
 function сменитьРоль(r){
@@ -1106,6 +1116,7 @@ function renderNav(){
     feed: LIVE.events.filter(e=>e.status==='new').length,
     people: ROL.persons.length,
     groups: LIVE.groups.length,
+    connreq: кзЖдут().length,
     live: LIVE.calls.filter(c=>!c.ended).length,
     recordings: (ROL.callArchive || []).length,
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
@@ -6502,6 +6513,323 @@ function завершитьЗаявление(z, статус){
     : z.person + ' — заявление отклонено. Остаётся только текстовая переписка.');
 }
 
+/* ====================================================================
+   КОНТРОЛЁР ЗВОНКОВ: ЗАЯВЛЕНИЯ НА СВЯЗЬ И НОМЕРА
+
+   Заявление — единственный способ, которым человек попадает в базу ZT
+   и получает связь. Поэтому контролёр звонков начинает смену не с живых
+   разговоров, а с заявлений: каждое неразобранное — это человек, который
+   не может позвонить домой.
+
+   Два вида заявлений:
+     1. На предоставление связи — телефонные разговоры, голосовые,
+        видеосообщения, видеосвидания. Вместе с ним человек подписывает
+        договор на услуги связи (сейчас трёхсторонний: человек, ZT,
+        учреждение).
+     2. На добавление номера — кому он хочет звонить. Одобренный номер
+        попадает в список разрешённых; по нему потом звонят с аппарата,
+        набирая последние 4 цифры.
+
+   Два пути:
+     — терминал: человек заполнил и подписал сам, контролёр только решает;
+     — бумага: заявление от руки приносят пачкой. Его сканируют, система
+       распознаёт, контролёр сверяет и решает. Набирать руками почти нечего.
+
+   Договор. Три подписи на каждом бумажном договоре — главная причина,
+   почему заявления застревают. Здесь подпись учреждения ставит сам
+   контролёр, когда одобряет заявление, подпись ZT стоит заранее (оферта),
+   а от человека нужна одна подпись — на том же листе, что и заявление.
+
+   Цензорские заявления (человек внесён из входящего письма) сюда не
+   попадают: это подтверждение личности, оно остаётся у оперативника.
+   Заявления на номер собраны из перечня контактов: неподтверждённый
+   номер с недавней датой — это заявление, которое ждёт решения.
+   ==================================================================== */
+
+function хешЗ(s){ let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const КЗ_СЕГОДНЯ = new Date(2026, 8, 28);
+function кзДата(дней){ const d = new Date(КЗ_СЕГОДНЯ); d.setDate(d.getDate() - дней); return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); }
+const КЗ_СРОК = 3;   // рабочих дней на рассмотрение — [уточнить по ПВР]
+const КЗ_ВИДЫ = ['телефонные разговоры', 'голосовые сообщения', 'видеосообщения', 'видеосвидание'];
+const КЗ_НУЖНО_РАЗРЕШЕНИЕ = ['телефонные разговоры', 'видеосвидание'];   // в СИЗО — только с разрешения следователя
+function кзКто(){ const n = профиль().name.split(' '); return n[0] + ' ' + n.slice(1).map(w => w[0] + '.').join(''); }
+function кзНомер(т){ const d = String(т || '').replace(/\D/g, ''); return d.slice(-4); }
+function кзСкрыть(т){ const s = String(т || ''); return s.length > 6 ? s.slice(0, s.length - 7).replace(/\d/g, '•') + s.slice(-7) : s; }
+
+/* ---------- заявления на связь: из общего набора, только бумага и терминал ---------- */
+const КЗ_СВЯЗЬ = ЗАЯВЛЕНИЯ.filter(z => (z.source === 'бумага' || z.source === 'терминал') && КЗ_ВИДЫ.includes(z.want));
+КЗ_СВЯЗЬ.forEach(z => {
+  z.вид = 'связь';
+  z.внесено = z.source === 'терминал' || z.status === 'подтверждено' || z.status === 'отклонено';
+  const h = хешЗ(z.id + ':договор');
+  z.договор = { ск: z.source === 'терминал' ? 'на терминале' : (h % 100 < 80 ? 'на бланке' : null), zt: true,
+    учр: z.status === 'подтверждено' };
+});
+
+/* ---------- заявления на номер ----------
+   Неподтверждённые номера людей, подключённых к ZT, — часть из них заявлена
+   недавно и ждёт решения. Стоп-лист и совпадения считаются от хеша. */
+const КЗ_НОМЕРА = (() => {
+  const все = [];
+  (POP.люди || []).forEach(p => {
+    if (!p.zt) return;
+    p.contacts.forEach((c, i) => {
+      if (c.verified || c.protected) return;
+      const h = хешЗ(p.id + ':' + i + ':номер');
+      if (h % 100 >= 2) return;
+      const дней = h % 4;
+      все.push({ id: '', вид: 'номер', pid: p.id, ci: i, person: p.name, dob: p.dob, unit: p.unit, article: p.article,
+        source: (h >>> 8) % 100 < 62 ? 'бумага' : 'терминал', daysAgo: дней, at: кзДата(дней),
+        want: 'добавить номер', contact: c.name, phone: c.phone, роль: c.role,
+        стоп: (h >>> 12) % 100 < 4, чужой: (h >>> 16) % 100 >= 4 && (h >>> 16) % 100 < 9,
+        status: 'новое', договор: null });
+    });
+  });
+  все.sort((a, b) => b.daysAgo - a.daysAgo);
+  все.forEach((z, k) => { z.id = 'Н-' + (5200 + k); z.внесено = z.source === 'терминал'; });
+  return все;
+})();
+
+function кзВсе(){ return КЗ_СВЯЗЬ.concat(КЗ_НОМЕРА); }
+function кзНайти(id){ return кзВсе().find(z => z.id === id); }
+function кзОткрыто(z){ return (z.status === 'новое' || z.status === 'на подтверждении') && !z.уОпера; }
+function кзЖдут(){ return кзВсе().filter(кзОткрыто).sort((a, b) => b.daysAgo - a.daysAgo); }
+function кзПросрочено(z){ return z.daysAgo >= КЗ_СРОК; }
+
+/* ---------- проверки перед решением ---------- */
+function кзПроверки(z){
+  const p = POP.поId[z.pid];
+  const out = [];
+  if (!z.внесено) out.push({ ok:false, блок:true, t:'Бумажное заявление не внесено', s:'отсканируйте — система распознает и заполнит' });
+  out.push(p && p.confirmed
+    ? { ok:true, t:'Личность подтверждена', s:'есть в картотеке, фото сверено' }
+    : { ok:false, блок:true, t:'Личность не подтверждена', s:'сверьте с личной карточкой', act:`кзЛичность('${z.id}')`, actT:'Сверить с карточкой' });
+  if (z.вид === 'связь') {
+    const д = z.договор;
+    out.push(д.ск ? { ok:true, t:'Договор подписан человеком', s: д.ск } :
+      { ok:false, блок:true, t:'Нет подписи человека под договором', s:'без неё заявление не действует — верните на подпись' });
+    const с = сизоДанные(z.pid);
+    if (с && КЗ_НУЖНО_РАЗРЕШЕНИЕ.includes(z.want)) out.push(с.permit
+      ? { ok:true, t:'Разрешение следователя', s: с.permit.no + ' · ' + с.permit.by + (с.permit.until ? ' · до ' + с.permit.until : '') }
+      : { ok:false, блок:true, t:'Нет разрешения следователя', s:'в СИЗО ' + z.want + ' — только с разрешения следствия или суда' });
+    if (p && p.risk === 'red') out.push({ ok:false, t:'Высокий уровень риска', s:'решение можно принять, но лучше передать оперативнику' });
+  } else {
+    if (z.стоп) out.push({ ok:false, блок:true, t:'Номер в стоп-листе', s:'потерпевший по делу — звонки на этот номер запрещены' });
+    if (z.чужой) out.push({ ok:false, t:'Этот номер уже разрешён другому человеку', s:'в этом же учреждении — проверьте, не передают ли связь' });
+    const p4 = кзНомер(z.phone), совп = p ? p.contacts.filter((c, i) => i !== z.ci && c.verified && кзНомер(c.phone) === p4) : [];
+    out.push(совп.length
+      ? { ok:true, t:'Последние 4 цифры совпадают с номером «' + совп[0].name + '»', s:'на аппарате система спросит по имени — это не мешает' }
+      : { ok:true, t:'Последние 4 цифры свободны: ' + p4, s:'на аппарате человек будет набирать их' });
+    out.push({ ok:true, t:'Заявленное родство: ' + z.роль, s:'для звонков достаточно заявления; документ — по решению оперативника' });
+  }
+  return out;
+}
+function кзМожноОдобрить(z){ return !кзПроверки(z).some(x => x.блок && !x.ok); }
+
+/* ---------- экран ---------- */
+function renderConnReq(){
+  const ждут = кзЖдут();
+  const ф = S.кзФильтр || 'all';
+  const набор = ждут.filter(z => ф === 'all' ? true : ф === 'связь' ? z.вид === 'связь' : ф === 'номер' ? z.вид === 'номер'
+    : ф === 'бумага' ? !z.внесено : ф === 'просрочено' ? кзПросрочено(z) : true);
+  const неделя = кзВсе().filter(z => z.status === 'подтверждено' && z.daysAgo <= 14);
+  const людей = new Set(неделя.filter(z => z.вид === 'связь').map(z => z.pid)).size;
+  const номеров = неделя.filter(z => z.вид === 'номер').length;
+  const уОпера = кзВсе().filter(z => z.уОпера && кзОткрытоИлиОпер(z));
+  const строка = z => {
+    const p = POP.поId[z.pid] || {};
+    const срок = кзПросрочено(z) ? `<span class="chip r">срок вышел</span>` : `<span class="chip">ещё ${КЗ_СРОК - z.daysAgo} дн.</span>`;
+    const провалы = кзПроверки(z).filter(x => !x.ok);
+    return `<div class="row">
+      <div class="stripe ${кзПросрочено(z) ? 'r' : !z.внесено ? 'o' : ''}"></div>
+      <div>
+        <div class="who">${esc(z.person)}</div>
+        <div class="meta">${esc(z.dob)} · ${esc(местоЧеловека(p) || z.unit)}</div>
+        <div class="marks">
+          <span class="chip">${esc(z.id)}</span>
+          <span class="chip ${z.source === 'терминал' ? 'g' : ''}">${z.source === 'терминал' ? 'терминал' : 'бумага'}</span>
+          <span class="chip">${esc(z.at)}</span>${срок}
+          ${z.вид === 'связь' ? значокСогласий(z) : ''}
+        </div>
+      </div>
+      <div>
+        <div class="sum">${z.вид === 'связь' ? 'Связь: ' + esc(z.want) : 'Номер: ' + esc(z.contact) + ' · ' + esc(z.роль)}</div>
+        <div class="why">${!z.внесено ? 'бумага ещё не внесена' : провалы.length ? esc(провалы.map(x => x.t).join(' · ')) : 'все проверки пройдены — можно одобрить'}</div>
+      </div>
+      <div class="acts">${!z.внесено
+        ? `<button class="btn sm primary" onclick="кзСкан('${z.id}')">Сканировать</button>`
+        : `<button class="btn sm ${провалы.length ? '' : 'primary'}" onclick="кзОткрыть('${z.id}')">${провалы.length ? 'Разобрать' : 'Открыть'}</button>`}</div>
+    </div>`;
+  };
+  const разобраны = кзВсе().filter(z => z.status === 'подтверждено' || z.status === 'отклонено' || z.status === 'возвращено')
+    .sort((a, b) => (b.решеноСейчас ? 1 : 0) - (a.решеноСейчас ? 1 : 0) || a.daysAgo - b.daysAgo);
+  const бумаги = ждут.filter(z => !z.внесено).length;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Заявления на связь</h1>
+      <p>Каждое неразобранное заявление — человек, который не может позвонить домой. Срок рассмотрения — ${КЗ_СРОК} дня.</p></div>
+    <div class="stats">
+      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.inbox}</div>
+        <div class="k">Ждут решения</div><div class="v tnum">${ждут.length}</div><div class="d">${ждут.filter(z => z.вид === 'связь').length} на связь · ${ждут.filter(z => z.вид === 'номер').length} на номера</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.check}</div>
+        <div class="k">Срок вышел</div><div class="v tnum">${ждут.filter(кзПросрочено).length}</div><div class="d">разобрать первыми</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.printer}</div>
+        <div class="k">Бумага к вводу</div><div class="v tnum">${бумаги}</div><div class="d">${бумаги ? `<a href="#" onclick="кзПачка(); return false">сканировать пачкой</a>` : 'всё внесено'}</div></div>
+      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.people}</div>
+        <div class="k">Пополнили базу за 2 недели</div><div class="v tnum">${людей + номеров}</div><div class="d">${людей} человек получили связь · ${номеров} номеров</div></div>
+    </div>
+    <div class="seg" style="margin-bottom:16px">${[['all','Все'],['связь','Предоставление связи'],['номер','Номера'],['бумага','Бумага к вводу'],['просрочено','Срок вышел']]
+      .map(([k, t]) => `<button class="${ф === k ? 'on' : ''}" onclick="S.кзФильтр='${k}'; render()">${t}</button>`).join('')}</div>
+    ${набор.length ? `<div class="rows">${набор.map(строка).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Здесь пусто</b><div>Новые заявления с терминала появятся сами, бумажные — после скана.</div></div>`}
+    ${уОпера.length ? `<h2 class="sect">Переданы оперативнику · ${уОпера.length}</h2><div class="rows">${уОпера.map(z => `<div class="row"><div class="stripe o"></div>
+      <div><div class="who">${esc(z.person)}</div><div class="marks"><span class="chip">${esc(z.id)}</span></div></div>
+      <div><div class="sum">${z.вид === 'связь' ? esc(z.want) : 'номер: ' + esc(z.contact)}</div><div class="why">${esc(z.уОпера)}</div></div><div class="acts"></div></div>`).join('')}</div>` : ''}
+    <h2 class="sect">Разобрано · ${разобраны.length}</h2>
+    <div class="журнал"><table class="журнал-таб" style="min-width:0">
+      <thead><tr><th>№</th><th>Дата</th><th>Человек</th><th>Путь</th><th>Что</th><th>Договор</th><th>Итог</th><th>Кто</th></tr></thead>
+      <tbody>${разобраны.slice(0, 25).map(z => `<tr><td>${esc(z.id)}</td><td class="tnum">${esc(z.at)}</td><td>${esc(z.person)}</td>
+        <td>${z.source === 'терминал' ? 'терминал' : 'бумага'}</td><td>${z.вид === 'связь' ? esc(z.want) : 'номер · ' + esc(z.роль)}</td>
+        <td>${z.вид === 'связь' ? (z.договор.ск && z.договор.учр ? '<span class="chip g">заключён</span>' : '<span class="chip">нет</span>') : '—'}</td>
+        <td><span class="chip ${z.status === 'подтверждено' ? 'g' : z.status === 'возвращено' ? 'o' : 'r'}">${esc(z.status)}</span></td><td>${esc(z.by || '')}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+}
+function кзОткрытоИлиОпер(z){ return z.status === 'новое' || z.status === 'на подтверждении'; }
+
+/* ---------- скан бумажного заявления ---------- */
+function кзЛист(z){
+  const p = POP.поId[z.pid] || {};
+  return `<div class="скан-лист">
+    <div class="загл">${z.вид === 'связь' ? 'Заявление о предоставлении услуг связи' : 'Заявление о добавлении номера в список разрешённых'}</div>
+    <div class="скан-стр"><span>Я, ${esc(z.person)}, ${esc(z.dob)} г. р., ${esc(местоЧеловека(p) || z.unit)},</span></div>
+    <div class="скан-стр"><span>${z.вид === 'связь' ? 'прошу предоставить: ' + esc(z.want) : 'прошу разрешить звонки на номер ' + esc(z.phone) + ' (' + esc(z.contact) + ', ' + esc(z.роль) + ')'}</span></div>
+    ${z.вид === 'связь' ? `<div class="скан-стр"><span class="скан-кв да"></span><span>с условиями договора на услуги связи ознакомлен и согласен</span></div>` : ''}
+    <div class="подп">${z.вид === 'номер' || z.договор.ск ? esc(String(z.person).split(' ')[0]) : '<span style="color:var(--danger)">подписи нет</span>'}</div>
+  </div>`;
+}
+function кзСкан(id){
+  const z = кзНайти(id); if (!z) return;
+  modal(`<div class="mh"><div><h3>Скан заявления</h3><div class="top-sub">${esc(z.id)} · бумага · ${esc(z.at)}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="drop-зона"><div class="drop-ико">${ICON.printer}</div><b>Заявление отсканировано</b>
+        <span>заявление_${esc(z.id)}.pdf · 1 лист · рукописный текст</span></div>
+      ${кзЛист(z)}
+      ${z.вид === 'связь' ? листСогласий(z, 'бумага') : ''}
+      <div class="note">Система распознает ФИО, место, вид связи, номер и найдёт человека в картотеке.
+        Набирать руками почти ничего не придётся — только поправить, где распознано неточно.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="кзРаспознать('${z.id}')">Распознать</button></div>`);
+}
+function кзРаспознать(id){
+  const z = кзНайти(id); if (!z) return;
+  toast('Распознавание…');
+  setTimeout(() => { z.внесено = true; z.распознано = true; render(); кзОткрыть(id); }, 500);
+}
+function кзПачка(){
+  const пачка = кзЖдут().filter(z => !z.внесено);
+  modal(`<div class="mh"><div><h3>Сканировать пачку</h3><div class="top-sub">${пачка.length} бумажных заявлений</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      <div class="drop-зона"><div class="drop-ико">${ICON.printer}</div><b>Положите пачку в сканер</b>
+        <span>каждый лист станет отдельным заявлением · ${пачка.length} листов</span></div>
+      <div class="note">После распознавания заявления встанут в очередь. Те, где все проверки пройдены,
+        можно одобрить одной кнопкой; остальные откроются с подсказкой, что не так.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn primary" onclick="кзПачкаГотово()">Сканировать и распознать</button></div>`);
+}
+function кзПачкаГотово(){
+  const пачка = кзЖдут().filter(z => !z.внесено);
+  пачка.forEach(z => { z.внесено = true; z.распознано = true; });
+  closeModal(); render();
+  const чистые = пачка.filter(кзМожноОдобрить).length;
+  toast('Распознано ' + пачка.length + ' заявлений. Готовы к одобрению: ' + чистые);
+}
+
+/* ---------- карточка решения ---------- */
+function кзОткрыть(id){
+  const z = кзНайти(id); if (!z) return;
+  const p = POP.поId[z.pid] || {};
+  const пров = кзПроверки(z);
+  const можно = кзМожноОдобрить(z);
+  const нетПодписи = z.вид === 'связь' && !z.договор.ск && z.внесено;
+  const д = z.договор;
+  modal(`<div class="mh"><div><h3>${z.вид === 'связь' ? 'Заявление на связь' : 'Заявление на номер'}</h3>
+      <div class="top-sub">${esc(z.id)} · ${z.source === 'терминал' ? 'терминал' : 'бумага'} · ${esc(z.at)} · ${кзПросрочено(z) ? 'срок вышел' : 'ещё ' + (КЗ_СРОК - z.daysAgo) + ' дн.'}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${z.распознано ? `<div class="note ok" style="margin-top:0"><b>Распознано со скана.</b> Сверьте фамилию и номер с листом — на них распознавание ошибается чаще всего.</div>` : ''}
+      <div class="два">
+        <div><div class="top-sub">Человек</div><div class="who" style="font-size:17px">${esc(z.person)}</div>
+          <div class="meta">${esc(z.dob)} · ${esc(местоЧеловека(p) || z.unit)} ${меткаРазрешения(z.pid)}</div></div>
+        <div><div class="top-sub">${z.вид === 'связь' ? 'Просит' : 'Номер'}</div>
+          <div class="who" style="font-size:17px">${z.вид === 'связь' ? esc(z.want) : esc(z.phone)}</div>
+          <div class="meta">${z.вид === 'связь' ? 'на номера из своего списка разрешённых' : esc(z.contact) + ' · ' + esc(z.роль)}</div></div>
+      </div>
+      <h4 style="margin:16px 0 8px">Проверки</h4>
+      <div class="кз-пров">${пров.map(x => `<div class="кз-п ${x.ok ? 'да' : x.блок ? 'нет' : 'вним'}">
+        <span class="кз-знак">${x.ok ? '✓' : x.блок ? '✗' : '!'}</span>
+        <span><b>${esc(x.t)}</b><br><span class="top-sub">${esc(x.s)}</span></span>
+        ${x.act ? `<button class="btn sm" onclick="${x.act}">${esc(x.actT)}</button>` : ''}</div>`).join('')}</div>
+      ${z.вид === 'связь' ? `<h4 style="margin:16px 0 8px">Договор на услуги связи</h4>
+        <div class="кз-пров">
+          <div class="кз-п ${д.ск ? 'да' : 'нет'}"><span class="кз-знак">${д.ск ? '✓' : '✗'}</span><span><b>Человек</b><br><span class="top-sub">${д.ск ? 'подписал ' + esc(д.ск) : 'подписи нет'}</span></span></div>
+          <div class="кз-п да"><span class="кз-знак">✓</span><span><b>ZT</b><br><span class="top-sub">подписано заранее — оферта</span></span></div>
+          <div class="кз-п ${д.учр ? 'да' : 'вним'}"><span class="кз-знак">${д.учр ? '✓' : '·'}</span><span><b>Учреждение</b><br><span class="top-sub">${д.учр ? 'подписано при одобрении' : 'подпишется вашей электронной подписью, когда вы одобрите'}</span></span></div>
+        </div>` : ''}
+      ${z.source === 'бумага' ? `<details style="margin-top:14px"><summary class="top-sub" style="cursor:pointer">Скан листа</summary>${кзЛист(z)}</details>` : ''}
+      ${z.вид === 'связь' ? блокСогласий(z) : ''}
+      <div id="кзОтказ" style="margin-top:12px"></div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="кзОпер('${z.id}')">Передать оперативнику</button>
+      ${нетПодписи ? `<button class="btn" onclick="кзВернуть('${z.id}')">Вернуть на подпись</button>` : ''}
+      <button class="btn" onclick="кзОтказФорма('${z.id}')">Отказать</button>
+      <button class="btn primary" ${можно ? '' : 'disabled title="Не пройдены обязательные проверки"'} onclick="кзОдобрить('${z.id}')">${z.вид === 'связь' ? 'Одобрить и подписать' : 'Добавить номер'}</button>
+    </div>`);
+}
+function кзЛичность(id){
+  const z = кзНайти(id); const p = z && POP.поId[z.pid]; if (!p) return;
+  p.confirmed = true; toast('Личность подтверждена по карточке: ' + p.name); кзОткрыть(id);
+}
+const КЗ_ОТКАЗЫ_СВЯЗЬ = ['Ограничение по решению начальника учреждения', 'Нет разрешения следователя или суда', 'Заявление нечитаемо', 'Иное основание'];
+const КЗ_ОТКАЗЫ_НОМЕР = ['Номер в стоп-листе', 'Номер принадлежит другому осуждённому', 'Номер учреждения или сотрудника', 'Номер не существует', 'Иное основание'];
+function кзОтказФорма(id){
+  const z = кзНайти(id); if (!z) return;
+  const список = z.вид === 'связь' ? КЗ_ОТКАЗЫ_СВЯЗЬ : КЗ_ОТКАЗЫ_НОМЕР;
+  document.getElementById('кзОтказ').innerHTML = `<div class="note warn" style="margin:0"><b>Основание отказа</b> — человек увидит его на терминале или в ответе на бумаге
+    <div class="seg" style="margin-top:10px; flex-wrap:wrap">${список.map((о, i) => `<button onclick="кзОтказать('${z.id}', ${i})">${esc(о)}</button>`).join('')}</div></div>`;
+}
+function кзЗакрыть(z, статус, текст){
+  z.status = статус; z.by = кзКто(); z.решеноСейчас = true; z.daysAgo = 0; z.at = кзДата(0);
+  closeModal(); render(); toast(текст);
+}
+function кзОдобрить(id){
+  const z = кзНайти(id); if (!z || !кзМожноОдобрить(z)) return;
+  if (z.вид === 'связь') {
+    z.договор.учр = true;
+    кзЗакрыть(z, 'подтверждено', z.person.split(' ')[0] + ': ' + z.want + ' — одобрено. Договор заключён, человек увидит ответ на терминале.');
+  } else {
+    const p = POP.поId[z.pid]; if (p && p.contacts[z.ci]) { p.contacts[z.ci].verified = true; p.contacts[z.ci].risk = 'green'; }
+    кзЗакрыть(z, 'подтверждено', 'Номер добавлен. ' + z.person.split(' ')[0] + ' может звонить: последние 4 цифры ' + кзНомер(z.phone));
+  }
+}
+function кзОтказать(id, i){
+  const z = кзНайти(id); if (!z) return;
+  z.причина = (z.вид === 'связь' ? КЗ_ОТКАЗЫ_СВЯЗЬ : КЗ_ОТКАЗЫ_НОМЕР)[i];
+  кзЗакрыть(z, 'отклонено', 'Отказано: ' + z.причина.toLowerCase() + '. Основание уйдёт человеку.');
+}
+function кзВернуть(id){
+  const z = кзНайти(id); if (!z) return;
+  кзЗакрыть(z, 'возвращено', 'Возвращено на подпись: распечатан лист договора для подписи человеком.');
+}
+function кзОпер(id){
+  const z = кзНайти(id); if (!z) return;
+  z.уОпера = 'передано ' + кзДата(0) + ' · ждёт решения оперативника';
+  closeModal(); render(); toast('Передано оперативному сотруднику');
+}
+
 /* ---------- сторона цензора ---------- */
 
 /* Письмо пришло на человека, которого нет в базе или он не подтверждён. */
@@ -9084,6 +9412,7 @@ function render(){
     services:    ['Сервисы', 'Что подключено на контуре'],
     staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
     complaints:  ['Жалобы и проверки', 'Обращения граждан и надзорных органов'],
+    connreq:     ['Заявления на связь', 'Предоставление связи и номера: бумага и терминал'],
     live:        ['Контроль переговоров', 'Разговоры, которые идут сейчас'],
     completed:   ['Завершённые сегодня', 'Чем закончились разговоры смены'],
     recordings:  ['Архив записей', 'Записи переговоров за три месяца с расшифровками'],
@@ -9097,7 +9426,7 @@ function render(){
      group:renderGroup, opreports:renderOpReports,
      facility:renderFacility, audit:renderAudit, services:renderServices,
      staff:renderStaff, complaints:renderComplaints,
-     live:renderLive, completed:renderCompleted, recordings:renderCallArchive,
+     connreq:renderConnReq, live:renderLive, completed:renderCompleted, recordings:renderCallArchive,
      register:renderRegister, profile:renderProfile,
      signing:renderSigning, handed:renderHanded,
      orders:renderOrders, appeals:renderAppeals,
