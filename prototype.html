@@ -678,6 +678,21 @@ a.btn{text-decoration:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 .изм-метка{margin-left:8px;font:600 13px/1.4 inherit;font-family:inherit;color:#8A5A00;background:#FFF1C2;border-radius:6px;padding:1px 6px}
 .согл-изм{background:#FFF8E1;border-color:#F2D27A}
+/* контролёр документов */
+.кд-шаги{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin-bottom:18px}
+.кд-шаги div{border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:var(--surface); display:flex; flex-direction:column; gap:2px}
+.кд-шаги b{font-size:14px} .кд-шаги span{font-size:12.5px; color:var(--muted)}
+.кд-шаги .done{background:var(--soft-mint); border-color:#BFE9DC} .кд-шаги .done b{color:var(--success)}
+.кд-шаги .cur{border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary)} .кд-шаги .cur b{color:var(--primary)}
+.кд-сканер{display:flex; align-items:center; gap:16px; border:1px solid var(--border); border-radius:var(--r-card); background:var(--surface); padding:18px 20px; margin-bottom:8px}
+.кд-ико{width:52px; height:52px; border-radius:14px; background:var(--lilac); color:var(--primary); display:flex; align-items:center; justify-content:center; flex-shrink:0}
+.кд-ико svg{width:26px; height:26px}
+.кд-бар{height:8px; border-radius:4px; background:var(--lilac); margin:8px 0; overflow:hidden} .кд-бар i{display:block; height:100%; background:var(--primary); transition:width .2s}
+.кд-жёлт{background:var(--soft-beige); color:var(--warning); border-radius:6px; padding:0 4px}
+.кд-проверка{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+.кд-лист{margin-bottom:10px}
+.кд-qr{display:inline-block; width:18px; height:18px; vertical-align:-3px; margin-left:6px; background:repeating-linear-gradient(90deg,#1C1C28 0 3px,transparent 3px 5px),repeating-linear-gradient(0deg,#1C1C28 0 3px,transparent 3px 5px); opacity:.7}
+input.кд-сомн{border-color:var(--warning)!important; background:var(--soft-beige)!important}
 /* заявления на связь у контролёра звонков */
 .кз-пров{display:flex; flex-direction:column; gap:8px}
 .кз-п{display:grid; grid-template-columns:28px 1fr auto; gap:10px; align-items:center; border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:var(--surface)}
@@ -704,6 +719,7 @@ a.btn{text-decoration:none}
         <option value="operative">Оперативник</option>
         <option value="head">Начальник учреждения</option>
         <option value="controller">Контроль переговоров</option>
+        <option value="docs">Контроль документов</option>
       </select>
     </div>
     <nav class="nav" id="nav"></nav>
@@ -1075,6 +1091,10 @@ const РАЗДЕЛЫ = {
   staff:       [ICON.staff,      'Доступы сотрудников'],
   complaints:  [ICON.complaints, 'Жалобы и проверки'],
   connreq:     [ICON.inbox,      'Заявления на связь'],
+  scan:        [ICON.printer,    'Сканирование'],
+  packs:       [ICON.inbox,      'Комплекты'],
+  contracts:   [ICON.legal,      'Договоры и согласия'],
+  scans:       [ICON.archive,    'Архив сканов'],
   live:        [ICON.live,       'Контроль переговоров'],
   completed:   [ICON.completed,  'Завершённые сегодня'],
   recordings:  [ICON.archive,     'Архив записей'],
@@ -1095,6 +1115,8 @@ const РОЛИ = {
                 разделы:['facility','signing','orders','appeals','complaints','audit','staff','services','channel','support','legal'] },
   controller: { имя:'Контроль переговоров', кто:['Наталья Белова','контроль переговоров','НБ'], дом:'connreq',
                 разделы:['connreq','live','completed','recordings','assignments','channel','support','legal'] },
+  docs:       { имя:'Контроль документов', кто:['Ирина Захарова','контроль документов','ИЗ'], дом:'scan',
+                разделы:['scan','packs','contracts','scans','assignments','channel','support','legal'] },
 };
 
 function сменитьРоль(r){
@@ -1117,6 +1139,8 @@ function renderNav(){
     people: ROL.persons.length,
     groups: LIVE.groups.length,
     connreq: кзЖдут().length,
+    scan: кдОжидают().length,
+    packs: КД_ПРИБЫЛИ.filter(к => к.статус === 'не выдан').length,
     live: LIVE.calls.filter(c=>!c.ended).length,
     recordings: (ROL.callArchive || []).length,
     audit: LIVE.audit.filter(a=>a.level!=='green').length,
@@ -6830,6 +6854,272 @@ function кзОпер(id){
   closeModal(); render(); toast('Передано оперативному сотруднику');
 }
 
+/* ====================================================================
+   КОНТРОЛЁР ДОКУМЕНТОВ: КОМПЛЕКТЫ, СКАНИРОВАНИЕ, ДОГОВОРЫ, АРХИВ
+
+   Человек попадает в базу ZT через бумагу. В приёмном отделении ему дают
+   комплект: памятка, заявление на выдачу карты со списком номеров, договор
+   об оказании услуг и согласия на обработку и передачу персональных данных.
+
+   Путь контролёра документов — без набора текста:
+     раздал → собрал → положил пачку в сканер → «Сканировать» из кабинета →
+     система распознала рукописное → проверил только то, в чём она не уверена →
+     сохранил. Человек записан с ФИО, датой рождения и паспортом, карта
+     привязана к его ID, номера ушли контролёру звонков, сканы — в архив.
+
+   Не дублировать. ID один на всю жизнь в системе. Если человек пришёл
+   этапом с уже подписанным договором, ему печатается короткий комплект:
+   памятка учреждения и заявление на номера — с уже напечатанным списком
+   из прошлого учреждения, остаётся отметить, кого оставить. Карта, её
+   номер и баланс действуют дальше. Договор и согласия заново не подписываются.
+
+   Согласия в обоих нынешних бланках одинаковые (приложения 1 и 2), поэтому
+   в комплекте они один раз — для договора и заявления сразу.
+   Паспортные данные в прототипе вымышленные.
+   ==================================================================== */
+
+if (!ПРОФИЛИ.docs) ПРОФИЛИ.docs = { id:'сотр-131', name:'Захарова Ирина Викторовна', initials:'ИЗ', post:'контроль документов',
+  role:'docs', facility:'ИК-5', attested:true, rank:null, employment:'вольнонаёмный сотрудник', tabNumber:'Т-05117',
+  since:'14.02.2022', phone:'внутр. 231', room:'кабинет 12, приёмное отделение', settings:{ phraseOfDay:true, hints:true } };
+
+const КД_ОРГАНЫ = ['ГУ МВД России по Архангельской обл.', 'ОВМ ОМВД России по г. Северодвинску', 'УФМС России по Вологодской обл.', 'ГУ МВД России по г. Москве', 'МВД по Республике Коми'];
+function кдЦифры(seed, n){ let s = '', h = хешЗ(seed); for (let i = 0; i < n; i++) { if (i % 7 === 6) h = хешЗ(seed + i); s += (h % 10); h = Math.floor(h / 10); } return s; }
+function кдПаспорт(p){
+  const h = хешЗ(p.id + ':паспорт'), с = кдЦифры(p.id + 'с', 4), г = 2010 + h % 14;
+  return { серия: с.slice(0,2) + ' ' + с.slice(2), номер: кдЦифры(p.id + 'н', 6),
+    выдан: String(1 + h % 28).padStart(2,'0') + '.' + String(1 + (h >>> 5) % 12).padStart(2,'0') + '.' + г,
+    кем: КД_ОРГАНЫ[(h >>> 9) % КД_ОРГАНЫ.length], код: кдЦифры(p.id + 'к', 3) + '-' + кдЦифры(p.id + 'кк', 3) };
+}
+function кдКарта(p){ return кдЦифры(p.id + ':карта', 12).replace(/(\d{4})(?=\d)/g, '$1 '); }
+
+/* ---------- прибывшие и комплекты ----------
+   ИК: пришли этапом — из СИЗО-2 (часто уже с договором) или из другого учреждения.
+   СИЗО: поступили впервые или повторно. Считается от хеша, без rnd. */
+const КД_ПРИБЫЛИ = (() => {
+  const кандидаты = (POP.люди || []).filter(p => хешЗ(p.id + ':прибыл') % 100 < 2).slice(0, 14);
+  return кандидаты.map((p, k) => {
+    const h = хешЗ(p.id + ':прибыл');
+    const дней = k < 3 ? 0 : (h >>> 7) % 7;
+    const изСизо = (h >>> 11) % 100 < 70;
+    const естьДоговор = изСизо && p.zt;
+    /* демо: трое прибыли сегодня, двое ждут подписи, четверо собраны (два полных, один — с сомнением в паспорте), остальные уже в базе */
+    const статус = k < 3 ? 'не выдан' : k < 5 ? 'выдан' : k < 9 ? 'собран' : 'отсканирован';
+    const договор = k === 5 || k === 7 ? false : k === 6 || k === 8 ? true : естьДоговор;
+    return { id: 'К-' + (7300 + k), pid: p.id, дней: k < 3 ? 0 : дней, at: кзДата(k < 3 ? 0 : дней), изСизо: изСизо || договор, естьДоговор: договор,
+      договорГде: договор ? 'СИЗО-2, ' + кзДата(40 + (h >>> 3) % 120) : null,
+      вид: договор ? 'короткий' : 'полный', статус,
+      уверен: k !== 7 };   // распознавание уверено во всех полях
+  });
+})();
+const КД_АРХИВ = [];   // сканы, сохранённые за эту смену; прежние — из договоров ниже
+
+function кдОжидают(){ return КД_ПРИБЫЛИ.filter(к => к.статус === 'собран'); }
+function кдЛистов(к){ return к.вид === 'полный' ? 4 : 2; }
+const КД_ЛИСТЫ = { полный: ['Заявление на выдачу карты и номера', 'Договор об оказании услуг', 'Согласия (приложения 1 и 2)', 'ZT Рядом: что видят родные'],
+  короткий: ['Заявление на номера (список из СИЗО-2)', 'ZT Рядом: что видят родные'] };
+
+/* ---------- договоры и согласия по базе ---------- */
+function кдДоговор(p){
+  if (!p.zt) return null;
+  const h = хешЗ(p.id + ':дог');
+  const где = (h % 100) < 30 ? 'СИЗО-2' : 'ИК-5';
+  return { номер: 'ЗТК-' + кдЦифры(p.id + 'д', 6), дата: кзДата(60 + h % 300), где, путь: (h >>> 6) % 100 < 80 ? 'бумага' : 'терминал',
+    с1: true, с2: (h >>> 9) % 100 >= 3, последний: (h >>> 12) % 100 < 6 ? 70 + (h >>> 3) % 19 : (h >>> 3) % 20 };
+}
+
+/* ---------- экран «Сканирование» ---------- */
+function renderScan(){
+  const st = S.кд || (S.кд = { этап: 'ready', пачка: [], прогресс: 0 });
+  const ждут = кдОжидают();
+  const листов = ждут.reduce((s, к) => s + кдЛистов(к), 0);
+  const шаги = [['Раздать', 'комплекты прибывшим'], ['Собрать', 'подписанные'], ['В сканер', 'всей пачкой'], ['Сканировать', 'кнопкой отсюда'], ['Проверить', 'только жёлтое'], ['Сохранить', 'в базу и архив']];
+  const шагСейчас = st.этап === 'ready' ? 3 : st.этап === 'scanning' ? 3 : st.этап === 'review' ? 4 : 5;
+  let тело = '';
+  if (st.этап === 'ready') тело = `
+    <div class="кд-сканер">
+      <div class="кд-ико">${ICON.printer}</div>
+      <div><b>Сканер кабинета 12 · готов</b><div class="top-sub">Собрано комплектов: ${ждут.length} · листов: ${листов}. Положите всю пачку — порядок листов не важен: на каждом листе свой QR-код комплекта.</div></div>
+      <button class="btn primary" ${ждут.length ? '' : 'disabled'} onclick="кдСканировать()">Сканировать пачку</button>
+    </div>
+    ${ждут.length ? `<h2 class="sect">В пачке · ${ждут.length}</h2><div class="rows">${ждут.map(к => { const p = POP.поId[к.pid];
+      return `<div class="row"><div class="stripe"></div><div><div class="who">${esc(p.name)}</div><div class="meta">комплект ${esc(к.id)} · ${к.вид} · ${кдЛистов(к)} листа</div></div>
+        <div><div class="sum">${к.естьДоговор ? 'договор уже есть — ' + esc(к.договорГде) : 'первый договор'}</div></div><div class="acts"><span class="chip">собран</span></div></div>`; }).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.check}</div><b>Пачка пуста</b><div>Отметьте собранные комплекты в разделе «Комплекты».</div></div>`}`;
+  if (st.этап === 'scanning') тело = `
+    <div class="кд-сканер"><div class="кд-ико">${ICON.printer}</div>
+      <div style="flex:1"><b>Сканирую и распознаю… ${st.прогресс} из ${st.пачка.length * 0 + st.всегоЛистов} листов</b>
+      <div class="кд-бар"><i style="width:${Math.round(100 * st.прогресс / st.всегоЛистов)}%"></i></div>
+      <div class="top-sub">Рукописный текст переводится в машиночитаемый: ФИО, дата рождения, паспорт, номера телефонов, подписи.</div></div></div>`;
+  if (st.этап === 'review') {
+    const пачка = st.пачка.map(id => КД_ПРИБЫЛИ.find(к => к.id === id));
+    const жёлтых = пачка.filter(к => !к.уверен && !к.проверен).length;
+    тело = `<div class="note ${жёлтых ? 'warn' : 'ok'}" style="margin-top:0">${жёлтых
+      ? `<b>Распознано ${пачка.length} комплектов.</b> В ${жёлтых} система не уверена в отдельных полях — они подсвечены. Остальное проверять не нужно.`
+      : `<b>Всё распознано и проверено.</b> Можно сохранять.`}</div>
+      <div class="rows">${пачка.map(кдСтрокаРаспознано).join('')}</div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px">
+        <button class="btn" onclick="S.кд.этап='ready'; render()">Отменить</button>
+        <button class="btn primary" ${жёлтых ? 'disabled title="Сначала проверьте подсвеченные поля"' : ''} onclick="кдСохранить()">Сохранить ${пачка.length} в базу и архив</button></div>`;
+  }
+  if (st.этап === 'done') тело = `<div class="note ok" style="margin-top:0"><b>Сохранено.</b> ${esc(st.итог)}</div>
+    <div style="display:flex; gap:10px"><button class="btn" onclick="go('scans')">Открыть архив сканов</button>
+    <button class="btn primary" onclick="S.кд.этап='ready'; render()">Следующая пачка</button></div>`;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Сканирование</h1><p>Подписанные комплекты — в базу без набора текста. Система распознаёт рукописное, вы проверяете только то, в чём она не уверена.</p></div>
+    <div class="кд-шаги">${шаги.map((ш, i) => `<div class="${i < шагСейчас ? 'done' : i === шагСейчас ? 'cur' : ''}"><b>${i + 1}. ${ш[0]}</b><span>${ш[1]}</span></div>`).join('')}</div>
+    ${тело}`;
+}
+function кдСтрокаРаспознано(к){
+  const p = POP.поId[к.pid], пас = кдПаспорт(p);
+  const жёлтое = !к.уверен && !к.проверен;
+  return `<div class="row"><div class="stripe ${жёлтое ? 'o' : 'g'}"></div>
+    <div><div class="who">${esc(p.name)}</div><div class="meta">${esc(p.dob)} · ${esc(местоЧеловека(p))}</div>
+      <div class="marks"><span class="chip">${esc(к.id)}</span><span class="chip ${к.естьДоговор || p.zt ? 'g' : 'a'}">${к.естьДоговор || p.zt ? 'найден в базе — тот же ID' : 'новый — создаётся ID'}</span></div></div>
+    <div><div class="sum">паспорт ${жёлтое ? `<span class="кд-жёлт">${esc(пас.серия)} ${esc(пас.номер.slice(0,3))}?${esc(пас.номер.slice(4))}</span>` : esc(пас.серия + ' ' + пас.номер)} · карта ${esc(кдКарта(p).slice(-4))}</div>
+      <div class="why">${к.вид === 'полный' ? 'заявление ✓ · договор ✓ · согласия ✓' : 'договор уже есть · номера: отмечено ' + Math.max(1, p.contacts.filter(c => !c.protected).length) }</div></div>
+    <div class="acts"><button class="btn sm ${жёлтое ? 'primary' : ''}" onclick="кдПроверить('${к.id}')">${жёлтое ? 'Проверить' : 'Посмотреть'}</button></div></div>`;
+}
+function кдСканировать(){
+  const st = S.кд, пачка = кдОжидают();
+  st.пачка = пачка.map(к => к.id); st.всегоЛистов = пачка.reduce((s, к) => s + кдЛистов(к), 0); st.прогресс = 0; st.этап = 'scanning';
+  render();
+  const шаг = () => { if (S.кд.этап !== 'scanning') return; st.прогресс = Math.min(st.всегоЛистов, st.прогресс + 2);
+    if (st.прогресс >= st.всегоЛистов) { st.этап = 'review'; render(); return; }
+    if (S.view === 'scan') render(); setTimeout(шаг, 260); };
+  setTimeout(шаг, 260);
+}
+function кдЛистHTML(к, i){
+  const p = POP.поId[к.pid], пас = кдПаспорт(p), имя = КД_ЛИСТЫ[к.вид][i];
+  return `<div class="скан-лист кд-лист"><div class="загл">${esc(имя)} <span class="кд-qr" title="QR комплекта ${esc(к.id)}"></span></div>
+    <div class="скан-стр"><span>${esc(p.name)} · ${esc(p.dob)} · ${esc(местоЧеловека(p))}</span></div>
+    ${i === 0 ? `<div class="скан-стр"><span>паспорт ${esc(пас.серия)} ${esc(пас.номер)}, выдан ${esc(пас.выдан)}, ${esc(пас.кем)}, ${esc(пас.код)}</span></div>
+      ${p.contacts.filter(c => !c.protected).slice(0, 3).map(c => `<div class="скан-стр"><span>${esc(c.phone)} · ${esc(c.name)} · ${esc(c.role)}</span></div>`).join('')}` : ''}
+    <div class="подп">${esc(p.name.split(' ')[0])}</div></div>`;
+}
+function кдПроверить(id){
+  const к = КД_ПРИБЫЛИ.find(x => x.id === id); if (!к) return;
+  const p = POP.поId[к.pid], пас = кдПаспорт(p), жёлтое = !к.уверен && !к.проверен;
+  const поле = (подпись, знач, сомн) => `<label class="fld">${подпись}<input value="${esc(знач)}" ${сомн ? 'class="кд-сомн"' : 'readonly'}></label>`;
+  modal(`<div class="mh"><div><h3>Комплект ${esc(к.id)}</h3><div class="top-sub">${к.вид} · ${кдЛистов(к)} листа · распознано со скана</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${жёлтое ? `<div class="note warn" style="margin-top:0">Система не уверена в одной цифре номера паспорта — сверьте с листом слева и поправьте, если нужно.</div>` : ''}
+      <div class="кд-проверка">
+        <div>${КД_ЛИСТЫ[к.вид].map((_, i) => кдЛистHTML(к, i)).join('')}</div>
+        <div>
+          ${поле('Фамилия, имя, отчество', p.name)}
+          <div class="два">${поле('Дата рождения', p.dob)}${поле('Место содержания', местоЧеловека(p))}</div>
+          <div class="два">${поле('Паспорт: серия', пас.серия)}${поле('номер', пас.номер, жёлтое)}</div>
+          <div class="два">${поле('Дата выдачи', пас.выдан)}${поле('Код подразделения', пас.код)}</div>
+          ${поле('Кем выдан', пас.кем)}
+          ${поле('Карта ZT', кдКарта(p))}
+          <div class="top-sub" style="margin:6px 0">Подписи найдены: ${к.вид === 'полный' ? 'заявление, договор, согласие 1, согласие 2' : 'заявление на номера'} ✓</div>
+          ${к.естьДоговор ? `<div class="note" style="margin:6px 0 0">Договор уже действует: ${esc(к.договорГде)}. Карта, её номер и баланс сохраняются. Новые номера уйдут контролёру звонков.</div>`
+            : `<div class="note" style="margin:6px 0 0">Будет создан ID, карта привязана к нему, договор и согласия — в архив, номера — контролёру звонков.</div>`}
+        </div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn primary" onclick="кдОтметитьПроверен('${к.id}')">Проверено</button></div>`);
+}
+function кдОтметитьПроверен(id){ const к = КД_ПРИБЫЛИ.find(x => x.id === id); if (к) к.проверен = true; closeModal(); render(); }
+function кдСохранить(){
+  const st = S.кд, пачка = st.пачка.map(id => КД_ПРИБЫЛИ.find(к => к.id === id));
+  let новых = 0, номеров = 0;
+  пачка.forEach(к => {
+    const p = POP.поId[к.pid];
+    if (!p.zt) новых++;
+    p.zt = true; к.статус = 'отсканирован'; к.сохранён = кзДата(0);
+    КД_АРХИВ.unshift({ к, когда: кзДата(0) + ' ' + new Date().toTimeString().slice(0,5), кто: кзКто() });
+    p.contacts.forEach((c, i) => {
+      if (c.protected || c.verified && !к.естьДоговор) return;
+      if (КЗ_НОМЕРА.some(z => z.pid === p.id && z.ci === i)) return;
+      КЗ_НОМЕРА.push({ id: 'Н-' + (5600 + КЗ_НОМЕРА.length), вид: 'номер', pid: p.id, ci: i, person: p.name, dob: p.dob, unit: p.unit, article: p.article,
+        source: 'бумага', daysAgo: 0, at: кзДата(0), want: 'добавить номер', contact: c.name, phone: c.phone, роль: c.role,
+        стоп: false, чужой: false, status: 'новое', договор: null, внесено: true, изКомплекта: к.id });
+      if (к.естьДоговор) c.verified = false;   // в колонии разрешённые номера подтверждаются заново
+      номеров++;
+    });
+  });
+  st.этап = 'done';
+  st.итог = `Записано людей: ${пачка.length} (новых в базе: ${новых}). Номеров на подтверждение контролёру звонков: ${номеров}. Сканы — в архиве.`;
+  render(); toast('Сохранено в базу и архив');
+}
+
+/* ---------- экран «Комплекты» ---------- */
+function renderPacks(){
+  const по = s => КД_ПРИБЫЛИ.filter(к => к.статус === s).length;
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Комплекты для прибывших</h1><p>Система сама решает, какой комплект нужен: тем, у кого договор уже есть, — короткий, без повторных подписей.</p></div>
+    <div class="grid2" style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px">
+      <div class="stat"><div class="k">Полный · первый раз в системе</div><div class="d" style="margin-top:6px">Памятка · заявление на выдачу карты и номера · договор · согласия (одни на всё) · ZT Рядом: что видят родные</div></div>
+      <div class="stat"><div class="k">Короткий · договор уже есть</div><div class="d" style="margin-top:6px">Памятка учреждения · заявление на номера с напечатанным списком из прошлого учреждения — отметить, кого оставить. Карта и баланс действуют.</div></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Не выданы</div><div class="v tnum">${по('не выдан')}</div><div class="d">прибыли сегодня</div></div>
+      <div class="stat"><div class="k">Выданы</div><div class="v tnum">${по('выдан')}</div><div class="d">ждут подписи</div></div>
+      <div class="stat"><div class="k">Собраны</div><div class="v tnum">${по('собран')}</div><div class="d">ждут сканера</div></div>
+      <div class="stat"><div class="k">В базе</div><div class="v tnum">${по('отсканирован')}</div><div class="d">сохранены</div></div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px"><button class="btn primary" ${по('не выдан') ? '' : 'disabled'} onclick="кдПечатьВсех()">Распечатать невыданные · ${по('не выдан')}</button></div>
+    <div class="журнал"><table class="журнал-таб" style="min-width:0">
+      <thead><tr><th>Комплект</th><th>Человек</th><th>Прибыл</th><th>Откуда</th><th>Договор</th><th>Комплект</th><th>Статус</th><th></th></tr></thead>
+      <tbody>${КД_ПРИБЫЛИ.map(к => { const p = POP.поId[к.pid];
+        const кнопка = { 'не выдан': ['Печать и выдача', 'выдан'], 'выдан': ['Собран', 'собран'], 'собран': ['К сканеру', null], 'отсканирован': ['', null] }[к.статус];
+        return `<tr><td>${esc(к.id)}</td><td>${esc(p.name)}<div class="top-sub">${esc(p.dob)}</div></td><td class="tnum">${esc(к.at)}</td>
+          <td>${S.facility === 'сизо' ? (к.естьДоговор ? 'повторно' : 'впервые') : (к.изСизо ? 'СИЗО-2' : 'другое учреждение')}</td>
+          <td>${к.естьДоговор ? `<span class="chip g">есть · ${esc(к.договорГде)}</span>` : '<span class="chip">нет</span>'}</td>
+          <td>${к.вид}</td><td><span class="chip ${к.статус === 'отсканирован' ? 'g' : к.статус === 'собран' ? 'a' : к.статус === 'выдан' ? 'o' : ''}">${к.статус}</span></td>
+          <td>${кнопка[1] ? `<button class="btn sm" onclick="кдСтатус('${к.id}','${кнопка[1]}')">${кнопка[0]}</button>` : кнопка[0] ? `<button class="btn sm" onclick="go('scan')">${кнопка[0]}</button>` : ''}</td></tr>`; }).join('')}</tbody>
+    </table></div>
+    <div class="note" style="margin-top:14px">Комплект печатается уже заполненным тем, что известно о человеке: ФИО, дата рождения, номер карты. Каждый лист — с QR-кодом комплекта, поэтому сканер собирает листы одного человека сам. Руками человек пишет только паспорт, номера родных и подписи.</div>`;
+}
+function кдСтатус(id, s){ const к = КД_ПРИБЫЛИ.find(x => x.id === id); if (!к) return; к.статус = s; render();
+  toast(s === 'выдан' ? 'Комплект распечатан и отмечен выданным' : 'Отмечен собранным — ждёт сканера'); }
+function кдПечатьВсех(){ const n = КД_ПРИБЫЛИ.filter(к => к.статус === 'не выдан'); n.forEach(к => к.статус = 'выдан'); render(); toast('Распечатано комплектов: ' + n.length); }
+
+/* ---------- экран «Договоры и согласия» ---------- */
+function renderContracts(){
+  const ф = S.кдФильтр || 'all';
+  const все = (POP.люди || []).filter(p => p.zt).map(p => ({ p, д: кдДоговор(p) }));
+  const неполные = все.filter(x => !x.д.с2), скоро = все.filter(x => x.д.последний >= 70);
+  const набор = (ф === 'неполные' ? неполные : ф === 'скоро' ? скоро : все).slice(0, 40);
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Договоры и согласия</h1><p>Кто подписал, что не хватает и чей договор скоро расторгнется сам — по пункту 11, если связью не пользуются 90 дней.</p></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Договоров действует</div><div class="v tnum">${все.length}</div><div class="d">люди в базе ZT</div></div>
+      <div class="stat"><div class="k">Не хватает подписи</div><div class="v tnum">${неполные.length}</div><div class="d">нет согласия на передачу данных</div></div>
+      <div class="stat"><div class="k">Скоро расторжение</div><div class="v tnum">${скоро.length}</div><div class="d">не пользуются 70+ дней</div></div>
+      <div class="stat"><div class="k">Новых за смену</div><div class="v tnum">${КД_АРХИВ.length}</div><div class="d">из сканера</div></div>
+    </div>
+    <div class="seg" style="margin-bottom:14px">${[['all','Все'],['неполные','Не хватает подписи'],['скоро','Скоро расторжение']].map(([k, t]) =>
+      `<button class="${ф === k ? 'on' : ''}" onclick="S.кдФильтр='${k}'; render()">${t}</button>`).join('')}</div>
+    <div class="журнал"><table class="журнал-таб" style="min-width:0">
+      <thead><tr><th>Человек</th><th>Договор</th><th>Где и как</th><th>Согласие 1</th><th>Согласие 2</th><th>Пользовался</th><th></th></tr></thead>
+      <tbody>${набор.map(({ p, д }) => `<tr><td>${esc(p.name)}<div class="top-sub">${esc(p.dob)}</div></td>
+        <td>${esc(д.номер)}<div class="top-sub">${esc(д.дата)}</div></td><td>${esc(д.где)} · ${д.путь}</td>
+        <td><span class="chip g">✓</span></td><td>${д.с2 ? '<span class="chip g">✓</span>' : '<span class="chip r">нет подписи</span>'}</td>
+        <td>${д.последний >= 70 ? `<span class="chip o">${д.последний} дн. назад</span>` : д.последний === 0 ? 'сегодня' : д.последний + ' дн. назад'}</td>
+        <td>${!д.с2 ? `<button class="btn sm" onclick="toast('Лист согласия распечатан для подписи')">Лист на подпись</button>` : ''}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${набор.length >= 40 ? '<div class="top-sub" style="margin-top:8px">показаны первые 40</div>' : ''}`;
+}
+
+/* ---------- экран «Архив сканов» ---------- */
+function renderScans(){
+  const q = (S.кдПоиск || '').toLowerCase();
+  const прежние = КД_ПРИБЫЛИ.filter(к => к.статус === 'отсканирован' && !к.сохранён).map(к => ({ к, когда: кзДата(Math.max(1, к.дней)) + ' 10:1' + (хешЗ(к.id) % 10), кто: 'Захарова И.В.' }));
+  const все = КД_АРХИВ.concat(прежние).filter(x => !q || POP.поId[x.к.pid].name.toLowerCase().includes(q));
+  document.getElementById('content').innerHTML = `
+    <div class="page-head"><h1>Архив сканов</h1><p>Каждый лист комплекта хранится как скан. На него ссылаются при спорах и проверках.</p></div>
+    <label class="fld" style="max-width:420px">Поиск по фамилии<input id="кдПоиск" value="${esc(S.кдПоиск || '')}" oninput="S.кдПоиск=this.value; renderScans(); const e=document.getElementById('кдПоиск'); e.focus(); e.setSelectionRange(e.value.length,e.value.length)"></label>
+    ${все.length ? `<div class="rows">${все.map(x => { const p = POP.поId[x.к.pid];
+      return `<div class="row"><div class="stripe g"></div><div><div class="who">${esc(p.name)}</div><div class="meta">${esc(p.dob)} · комплект ${esc(x.к.id)}</div></div>
+        <div><div class="sum">${кдЛистов(x.к)} листа · ${x.к.вид}</div><div class="why">сохранено ${esc(x.когда)} · ${esc(x.кто)}</div></div>
+        <div class="acts"><button class="btn sm" onclick="кдПроверить('${x.к.id}')">Открыть сканы</button></div></div>`; }).join('')}</div>`
+      : `<div class="empty"><div class="big">${ICON.archive}</div><b>Ничего не найдено</b></div>`}`;
+}
+
 /* ---------- сторона цензора ---------- */
 
 /* Письмо пришло на человека, которого нет в базе или он не подтверждён. */
@@ -9413,6 +9703,10 @@ function render(){
     staff:       ['Доступы сотрудников', 'Кто имеет доступ и когда пользовался'],
     complaints:  ['Жалобы и проверки', 'Обращения граждан и надзорных органов'],
     connreq:     ['Заявления на связь', 'Предоставление связи и номера: бумага и терминал'],
+    scan:        ['Сканирование', 'Комплекты прибывших — в базу без набора текста'],
+    packs:       ['Комплекты', 'Договор, заявление и согласия для прибывших'],
+    contracts:   ['Договоры и согласия', 'Подписи, недостающие листы, расторжение'],
+    scans:       ['Архив сканов', 'Сканы всех листов комплектов'],
     live:        ['Контроль переговоров', 'Разговоры, которые идут сейчас'],
     completed:   ['Завершённые сегодня', 'Чем закончились разговоры смены'],
     recordings:  ['Архив записей', 'Записи переговоров за три месяца с расшифровками'],
@@ -9426,7 +9720,7 @@ function render(){
      group:renderGroup, opreports:renderOpReports,
      facility:renderFacility, audit:renderAudit, services:renderServices,
      staff:renderStaff, complaints:renderComplaints,
-     connreq:renderConnReq, live:renderLive, completed:renderCompleted, recordings:renderCallArchive,
+     connreq:renderConnReq, scan:renderScan, packs:renderPacks, contracts:renderContracts, scans:renderScans, live:renderLive, completed:renderCompleted, recordings:renderCallArchive,
      register:renderRegister, profile:renderProfile,
      signing:renderSigning, handed:renderHanded,
      orders:renderOrders, appeals:renderAppeals,
