@@ -374,8 +374,6 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .зан-строка{margin:-6px 0 18px; font-size:12.5px; line-height:1.5;
   border-left:2px solid var(--border); padding:2px 0 2px 11px; color:var(--muted);
   max-width:900px}
-.зан-строка > div + div{margin-top:7px}
-.зан-раскрыто{max-width:760px}
 
 /* Новинки дня — узкая полоса сверху, а не половина экрана. */
 .зан-новинки{display:grid; grid-template-columns:minmax(220px, 300px) 1fr; gap:20px;
@@ -10322,11 +10320,7 @@ function renderLeisure(){
       </div>
     </div>
 
-    ${ЗАН_ШАПКА ? `<div class="зан-строка">
-      <div>${esc(ЗАН_ШАПКА.коротко)}</div>
-      <div class="зан-раскрыто">${esc(ЗАН_ШАПКА.источник)}</div>
-      <div class="зан-раскрыто">${esc(ЗАН_ШАПКА.оговорка)}</div>
-    </div>` : ''}
+    ${ЗАН_ШАПКА ? `<div class="зан-строка">${esc(ЗАН_ШАПКА.коротко)}</div>` : ''}
 
     <h2 class="sect">Сегодня на проверке · ${стол.length}</h2>
 
