@@ -81,6 +81,18 @@ svg{flex:none}
 .top-title{font-size:17px; font-weight:650}
 .top-sub{color:var(--muted); font-size:13px}
 .top-right{display:flex; align-items:center; gap:12px}
+
+/* Переключатели роли и учреждения в шапке: нужны только тогда, когда
+   боковая панель свёрнута и её переключатели недоступны. */
+.top-switch{display:none; align-items:center; gap:8px}
+.top-switch select{
+  appearance:auto; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:8px 10px; font:inherit; font-size:13.5px;
+  font-weight:600; color:var(--text); cursor:pointer; max-width:46vw;
+  min-height:40px;   /* палец, а не курсор: меньше 40 точек не нажать уверенно */
+}
+.top-switch select:focus{outline:0; border-color:var(--primary);
+  box-shadow:0 0 0 3px rgba(111,61,255,.14)}
 .ctx{
   display:flex; align-items:center; gap:8px; background:var(--bg);
   border:1px solid var(--border); border-radius:10px; padding:7px 12px;
@@ -666,6 +678,8 @@ a.btn{text-decoration:none}
 @media (max-width:1000px){
   .app{grid-template-columns:72px 1fr}
   .brand{justify-content:center; padding:2px 0 18px}
+  /* Боковые переключатели прячем вместе с подписями — вместо них
+     работают те, что в шапке. */
   .brand-text, .rolebox, .side-foot{display:none}
   .nav button{justify-content:center; padding:11px 0}
   .nav button span:not(.ico){display:none}
@@ -674,6 +688,18 @@ a.btn{text-decoration:none}
   .content{padding:20px 18px 56px}
   .topbar{padding:0 18px}
   .ctx{display:none}
+  .top-switch{display:flex}
+  /* Фамилию и должность убираем: на 768 точках они вытесняют переключатели,
+     а кто вошёл — видно по значку с инициалами. */
+  .user > div:last-child{display:none}
+}
+
+/* Совсем узко: заголовок страницы уступает место переключателям. */
+@media (max-width:620px){
+  .topbar{height:auto; padding:10px 14px; flex-wrap:wrap; gap:8px}
+  .top-title{font-size:16px}
+  .topbar .top-sub{display:none}
+  .top-switch select{font-size:13px; padding:7px 8px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 .изм-метка{margin-left:8px;font:600 13px/1.4 inherit;font-family:inherit;color:#8A5A00;background:#FFF1C2;border-radius:6px;padding:1px 6px}
@@ -733,6 +759,22 @@ input.кд-сомн{border-color:var(--warning)!important; background:var(--soft
         <div class="top-sub" id="topSub">Понедельник, 28 сентября 2026 · смена 08:00–20:00</div>
       </div>
       <div class="top-right">
+        <!-- На планшете боковая панель сворачивается до значков, и выбор роли
+             с выбором учреждения туда не помещаются. Поэтому на узких экранах
+             они живут здесь: без них доступна одна-единственная роль. -->
+        <div class="top-switch">
+          <select id="roleSelectTop" onchange="сменитьРоль(this.value)" aria-label="Режим работы">
+            <option value="censor">Цензор</option>
+            <option value="operative">Оперативник</option>
+            <option value="head">Начальник учреждения</option>
+            <option value="controller">Контроль переговоров</option>
+            <option value="docs">Контроль документов</option>
+          </select>
+          <select id="facSelectTop" onchange="сменитьУчреждение(this.value)" aria-label="Учреждение">
+            <option value="ик">ИК-5</option>
+            <option value="сизо">СИЗО-2</option>
+          </select>
+        </div>
         <div class="ctx">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
           <span>Учреждение:</span>
@@ -1170,11 +1212,17 @@ function renderNav(){
     if (a.top < b.top || a.bottom > b.bottom) активная.scrollIntoView({ block: 'nearest' });
   }
 
-  // переключатель роли
-  const rb = document.getElementById('roleSelect');
-  if (rb && rb.value !== S.role) rb.value = S.role;
-  const fb = document.getElementById('facSelect');
-  if (fb && fb.value !== S.facility) fb.value = S.facility;
+  /* Переключателей роли и учреждения по два — в боковой панели и в шапке;
+     виден всегда ровно один, но значение держим одинаковым у обоих,
+     иначе после смены роли второй покажет старое. */
+  ['roleSelect', 'roleSelectTop'].forEach(id => {
+    const э = document.getElementById(id);
+    if (э && э.value !== S.role) э.value = S.role;
+  });
+  ['facSelect', 'facSelectTop'].forEach(id => {
+    const э = document.getElementById(id);
+    if (э && э.value !== S.facility) э.value = S.facility;
+  });
   const [имя, должность, инициалы] = роль.кто;
   const un = document.getElementById('userName'); if (un) un.textContent = имя;
   const ur = document.getElementById('userRole'); if (ur) ur.textContent = должность;
