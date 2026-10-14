@@ -372,14 +372,10 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
    мелким кеглем и приглушённым цветом: она должна читаться, когда на неё
    смотрят, и не мешать, когда работают. Смысл при этом не обрезан. */
 .зан-строка{margin:-6px 0 18px; font-size:12.5px; line-height:1.5;
-  border-left:2px solid var(--border); padding:1px 0 1px 11px; color:var(--muted);
+  border-left:2px solid var(--border); padding:2px 0 2px 11px; color:var(--muted);
   max-width:900px}
-.зан-строка summary{cursor:pointer; list-style:none}
-.зан-строка summary::-webkit-details-marker{display:none}
-.зан-строка summary:hover{color:var(--text)}
-.зан-строка[open]{border-left-color:var(--primary)}
-.зан-ещё{color:var(--primary); font-size:12px; margin-left:4px; white-space:nowrap}
-.зан-раскрыто{margin-top:8px; font-size:12.5px; color:var(--muted); max-width:760px}
+.зан-строка > div + div{margin-top:7px}
+.зан-раскрыто{max-width:760px}
 
 /* Новинки дня — узкая полоса сверху, а не половина экрана. */
 .зан-новинки{display:grid; grid-template-columns:minmax(220px, 300px) 1fr; gap:20px;
@@ -10326,13 +10322,11 @@ function renderLeisure(){
       </div>
     </div>
 
-    ${ЗАН_ШАПКА ? `<details class="зан-строка">
-      <summary>${esc(ЗАН_ШАПКА.коротко)} <span class="зан-ещё">подробнее</span></summary>
-      <div class="зан-раскрыто">
-        <div>${esc(ЗАН_ШАПКА.источник)}</div>
-        <div style="margin-top:8px">${esc(ЗАН_ШАПКА.оговорка)}</div>
-      </div>
-    </details>` : ''}
+    ${ЗАН_ШАПКА ? `<div class="зан-строка">
+      <div>${esc(ЗАН_ШАПКА.коротко)}</div>
+      <div class="зан-раскрыто">${esc(ЗАН_ШАПКА.источник)}</div>
+      <div class="зан-раскрыто">${esc(ЗАН_ШАПКА.оговорка)}</div>
+    </div>` : ''}
 
     <h2 class="sect">Сегодня на проверке · ${стол.length}</h2>
 
