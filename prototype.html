@@ -364,18 +364,45 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .расш-кто{color:var(--muted); font-size:13px}
 .расш-текст{line-height:1.5}
 
-/* Полезная занятость: шапка с исследованием и схемы листов. */
-.зан-шапка{border:1.5px solid var(--border); border-left:4px solid var(--primary);
-  border-radius:14px; padding:16px 20px; background:var(--surface); margin-bottom:20px}
-.зан-цифра{font-size:16.5px; line-height:1.5; font-weight:600}
-.зан-источник{margin-top:6px; font-size:12.5px; color:var(--muted)}
-.зан-оговорка{margin-top:10px; font-size:14px; line-height:1.55; color:var(--text)}
+/* Полезная занятость.
+
+   Строка с исследованием — одна строка, а не плакат: она перед глазами
+   каждый день, и место на экране дороже. Подробности раскрываются. */
+.зан-строка{margin-bottom:16px; font-size:13.5px; line-height:1.45;
+  border-left:3px solid var(--primary); padding:2px 0 2px 12px; color:var(--muted)}
+.зан-строка summary{cursor:pointer; list-style:none; color:var(--text)}
+.зан-строка summary::-webkit-details-marker{display:none}
+.зан-строка summary b{font-weight:600}
+.зан-ещё{color:var(--primary); font-size:12.5px; margin-left:6px; white-space:nowrap}
+.зан-раскрыто{margin-top:8px; font-size:12.5px; color:var(--muted); max-width:760px}
+
+/* Новинки дня — узкая полоса сверху, а не половина экрана. */
+.зан-новинки{display:grid; grid-template-columns:minmax(220px, 300px) 1fr; gap:20px;
+  align-items:start; border:1.5px solid var(--border); border-radius:14px;
+  padding:16px 18px; background:var(--surface); margin-bottom:22px}
+@media (max-width:900px){ .зан-новинки{grid-template-columns:1fr} }
+
+.зан-ряд{display:flex; gap:12px; flex-wrap:wrap}
+.зан-ряд.сетка{display:grid; grid-template-columns:repeat(auto-fill, 104px); gap:16px 12px;
+  justify-content:start}
+.зан-плитка{margin:0; width:104px; cursor:pointer}
+.зан-ряд:not(.сетка) .зан-плитка{width:84px}
+.зан-плитка:hover .зан-лист{outline:2px solid var(--primary); outline-offset:2px; border-radius:6px}
+.зан-плитка.отказ .зан-лист{opacity:.55}
+.зан-плитка figcaption{margin-top:5px; font-size:11.5px; line-height:1.3}
+.зан-имя{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.зан-под{display:block; color:var(--muted); font-size:11px}
 
 .зан-лист{display:block; width:100%; height:auto}
 .зан-лист.большой{max-width:190px}
 .зан-карточка{display:grid; grid-template-columns:190px 1fr; gap:22px; align-items:start;
   margin:16px 0}
 @media (max-width:760px){ .зан-карточка{grid-template-columns:1fr} .зан-лист.большой{max-width:170px} }
+
+/* Основание отказа прячем под раскрытие: в девяти случаях из десяти
+   материал разрешают, и список оснований только мешает. */
+.зан-отказ{margin-top:14px; font-size:13.5px}
+.зан-отказ summary{cursor:pointer; color:var(--muted)}
 
 /* ---------- зона скана заявления ---------- */
 .drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
@@ -1016,7 +1043,8 @@ const S = {
   архивПериод:'week',        // смена, неделя, месяц, три месяца
   журналПериод:'week',       // период журнала регистрации
   звПериод:'last', звПоиск:'', звВид:'all', звУровень:'all',
-  занФильтр:'all', занВид:'all', занПоиск:'', занОснование:null,
+  занВид:'открытка', занПовод:'all', занПоиск:'', занОснование:null,
+  занТолькоОтказ:false, занРазборИндекс:0,
   звДата:null, звС:null, звПо:null,   // поиск по записям переговоров
   доступЧерновик:null,       // наборы разделов, пока их правят
   архивРешение:'all', архивКанал:'all', архивРиск:'all',
@@ -1165,7 +1193,7 @@ const РАЗДЕЛЫ = {
 
 const РОЛИ = {
   censor:     { имя:'Цензор', кто:['Елена Соколова','цензор','ЕС'], дом:'queue',
-                разделы:['queue','catalog','dosug','assignments','register','archive','reports','channel','support','legal'] },
+                разделы:['queue','catalog','assignments','register','archive','reports','channel','support','legal'] },
   operative:  { имя:'Оперативник', кто:['Алексей Петров','оперативный сотрудник','АП'], дом:'situation',
                 разделы:['situation','prevention','handed','signals','assignments','groups','people','opreports','channel','support','legal'] },
   head:       { имя:'Начальник учреждения', кто:['Марина Волкова','начальник учреждения','МВ'], дом:'facility',
@@ -9744,24 +9772,22 @@ function renderCallArchive(){
 
 /* ================== ПОЛЕЗНАЯ ЗАНЯТОСТЬ ==================
 
-   Каталог материалов, которые родственник отправляет заключённому как заботу,
-   а заключённый может заказать себе сам. Цензор проверяет позицию каталога
-   ОДИН РАЗ: раскраска не меняется от того, что её отправили сто раз, и
-   проверять её в каждом сообщении — работа ради работы.
+   Весь материал — из каталога ЗТ: ни родственник, ни заключённый ничего
+   своего не присылают, они выбирают позицию каталога. Поэтому цензор
+   проверяет позицию ОДИН РАЗ на весь каталог.
 
-   Два правила, от которых зависит нагрузка:
+   Нагрузка держится на двух правилах:
+     — в очередь попадает только непроверенное, которое сегодня кто-то
+       отправил: выложенное, но невостребованное работы не создаёт;
+     — решение по позиции потом действует само, без участия цензора.
 
-     1. В очередь попадает только то, что не проверялось раньше И что кто-то
-        сегодня отправил. Материал, который никому не понадобился, работы
-        не создаёт.
+   В каталоге пятьсот позиций, а в день появляется пять-шесть новинок.
+   Отсюда и устройство экрана: наверху — сегодняшние пять, которые
+   разбираются подряд за минуту, ниже — весь каталог для справки и
+   пересмотра решений.
 
-     2. Сначала цензор видит список без содержимого: вид, название, сколько
-        человек ждут отправки. Содержимое открывается по кнопке — иначе лента
-        превращается в галерею, и глаз замыливается на первом десятке.
-
-   Настоящих картинок в прототипе нет: каждый материал рисуется схемой,
-   по которой видно, что это за лист — текст, сетка кроссворда, контур
-   раскраски, цветная открытка.
+   Настоящих изображений нет: каждая позиция рисуется схемой листа.
+   Файлы загружает ЗТ через админку.
 */
 
 const ЗАНЯТОСТЬ = (ROL.leisure || []).map(п => ({ ...п }));
@@ -9771,14 +9797,12 @@ const ЗАН_ШАПКА = ROL.leisureHeader || null;
 
 function занВид(вид){ return ЗАН_ВИДЫ.find(в => в.вид === вид) || { имя: вид, схема: 'текст' }; }
 function занЖдут(){ return ЗАНЯТОСТЬ.filter(п => !п.решение && п.отправленийСегодня > 0); }
-function занПроверено(){ return ЗАНЯТОСТЬ.filter(п => п.решение); }
 function занЖдётСчёт(){ return занЖдут().length; }
 
-/* ---------- схемы материалов ----------
+/* ---------- схемы ----------
 
-   Лист А4 в пропорции, на нём — то, по чему вид узнаётся с одного взгляда.
-   Цветные материалы рисуются цветом, чёрно-белые — серым: цензору важно
-   видеть, цветной лист или нет, от этого зависит, как он печатается. */
+   Лист А4 в пропорции. Цветные материалы рисуются цветом: цензору важно
+   видеть, цветная печать или нет. */
 
 const Л_Ш = 150, Л_В = 200;
 
@@ -9792,137 +9816,228 @@ function занЛинии(x, y, ш, сколько, шаг, цвет){
   return л.join('');
 }
 
-function занСетка(x, y, клеток, шаг, чёрные){
+/* Нонограмма: числа сбоку и сверху, поле в клетку. */
+function занНоно(x, y, клеток, шаг, сид){
   const э = [];
-  for (let r = 0; r < клеток; r++) for (let c = 0; c < клеток; c++) {
-    const чёрн = чёрные && чёрные.includes(r * клеток + c);
-    э.push(`<rect x="${x + c * шаг}" y="${y + r * шаг}" width="${шаг}" height="${шаг}"
-      fill="${чёрн ? 'var(--muted)' : '#fff'}" stroke="var(--border)" stroke-width="1"/>`);
+  for (let i = 0; i <= клеток; i++) {
+    э.push(`<line x1="${x}" y1="${y + i * шаг}" x2="${x + клеток * шаг}" y2="${y + i * шаг}"
+      stroke="var(--border)" stroke-width="${i % 5 === 0 ? 1.4 : 0.7}"/>`);
+    э.push(`<line x1="${x + i * шаг}" y1="${y}" x2="${x + i * шаг}" y2="${y + клеток * шаг}"
+      stroke="var(--border)" stroke-width="${i % 5 === 0 ? 1.4 : 0.7}"/>`);
+  }
+  /* Подсказки числами по краям — по ним и решают. */
+  const ч = [];
+  for (let i = 0; i < клеток; i++) {
+    ч.push(`<text x="${x - 4}" y="${y + i * шаг + шаг - 1.5}" text-anchor="end"
+      font-size="5" fill="var(--muted)">${1 + (i * 3 + (сид || 0)) % 7}</text>`);
+    ч.push(`<text x="${x + i * шаг + шаг / 2}" y="${y - 3}" text-anchor="middle"
+      font-size="5" fill="var(--muted)">${1 + (i * 5 + ((сид || 0) >>> 3)) % 6}</text>`);
+  }
+  return э.join('') + ч.join('');
+}
+
+/* Вид позиции узнаётся с одного взгляда, но две соседние позиции одного вида
+   не должны выглядеть близнецами: цвет и мотив берутся от названия, поэтому
+   у каждой позиции он свой и всегда один и тот же. Сотня одинаковых розовых
+   прямоугольников — это не каталог, а стена. */
+function занСид(п){
+  let h = 2166136261;
+  for (const c of String(п.id + п.имя)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+const ЗАН_ФОНЫ = ['#FDE8EF', '#E8F1FD', '#EAF7EC', '#FBF2E0', '#F1EBFB', '#FCEDE4'];
+const ЗАН_АКЦЕНТЫ = ['#D1576F', '#3F76C4', '#3E8C52', '#C08A2A', '#6F4AC4', '#C96A3C'];
+
+/* Лепестки и лучи вокруг центра — общий приём для цветка и звезды. */
+function занВокруг(cx, cy, r, n, рисуй){
+  const э = [];
+  for (let i = 0; i < n; i++) {
+    const у = i * (Math.PI * 2 / n);
+    э.push(рисуй(cx + Math.cos(у) * r, cy + Math.sin(у) * r, i * (360 / n)));
   }
   return э.join('');
 }
 
+/* Мотивы открытки. */
+const ЗАН_МОТИВЫ = [
+  c => '<path d="M75 92 c-17 -13 -28 -21 -28 -32 a12 12 0 0 1 21 -7 a12 12 0 0 1 21 7 c0 11 -11 19 -28 32 Z" fill="' + c + '" opacity=".62"/>',
+  c => '<path d="M75 44 L94 74 H56 Z M75 62 L99 96 H51 Z" fill="' + c + '" opacity=".6"/>'
+     + '<rect x="71" y="96" width="8" height="12" fill="' + c + '" opacity=".7"/>',
+  c => '<circle cx="75" cy="68" r="9" fill="' + c + '" opacity=".75"/>'
+     + занВокруг(75, 68, 19, 6, (x, y, a) =>
+         '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="9" ry="6" fill="' + c
+         + '" opacity=".4" transform="rotate(' + a + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')"/>'),
+  c => '<path d="M75 42 l7 21 h22 l-18 13 7 21 -18 -13 -18 13 7 -21 -18 -13 h22 Z" fill="' + c + '" opacity=".62"/>',
+  c => '<circle cx="75" cy="64" r="20" fill="' + c + '" opacity=".5"/>'
+     + '<path d="M75 84 q5 12 0 24" stroke="' + c + '" stroke-width="2" fill="none" opacity=".7"/>',
+  c => '<rect x="48" y="56" width="54" height="34" rx="3" fill="' + c + '" opacity=".4"/>'
+     + '<path d="M48 56 L75 78 L102 56" stroke="' + c + '" stroke-width="2.4" fill="none" opacity=".8"/>',
+];
+
+/* Фигуры для раскрасок и оригами — контуром, без заливки. */
+const ЗАН_КОНТУРЫ = [
+  '<path d="M36 126 L75 86 L114 126 Z"/><rect x="50" y="126" width="50" height="40"/>'
+  + '<rect x="64" y="142" width="16" height="24"/><circle cx="112" cy="52" r="14"/>',
+
+  '<circle cx="75" cy="78" r="15"/>'
+  + занВокруг(75, 78, 26, 6, (x, y, a) =>
+      '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="12" ry="8" transform="rotate('
+      + a + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')"/>')
+  + '<path d="M75 94 v54"/>',
+
+  '<path d="M34 120 h82 l-12 28 h-58 Z"/><path d="M75 120 v-54"/><path d="M75 70 l34 16 -34 12 Z"/>',
+
+  '<path d="M75 60 q-26 -22 -26 6 q0 24 26 38 q26 -14 26 -38 q0 -28 -26 -6 Z"/><path d="M75 60 v44"/>',
+
+  '<ellipse cx="68" cy="100" rx="34" ry="20"/><path d="M102 100 l22 -16 v32 Z"/><circle cx="54" cy="94" r="3.4"/>',
+
+  '<path d="M75 50 l9 26 h27 l-22 17 9 27 -23 -17 -23 17 9 -27 -22 -17 h27 Z"/>',
+];
+
 const ЗАН_СХЕМЫ = {
-  'текст': () => `
-    <rect x="22" y="22" width="76" height="7" rx="3.5" fill="var(--muted)" opacity=".75"/>
-    ${занЛинии(22, 44, 106, 14, 11)}`,
+  'открытка': п => {
+    const h = занСид(п), фон = ЗАН_ФОНЫ[h % 6], цв = ЗАН_АКЦЕНТЫ[(h >>> 3) % 6];
+    return '<rect x="16" y="30" width="118" height="86" rx="7" fill="' + фон
+      + '" stroke="var(--border)" stroke-width="1.5"/>'
+      + ЗАН_МОТИВЫ[(h >>> 7) % ЗАН_МОТИВЫ.length](цв)
+      + занЛинии(24, 132, 102, 2, 12)
+      + '<rect x="24" y="168" width="58" height="2.5" rx="1.2" fill="var(--border)"/>';
+  },
 
-  'кроссворд': () => `
-    <rect x="22" y="20" width="60" height="6" rx="3" fill="var(--muted)" opacity=".7"/>
-    ${занСетка(24, 38, 8, 13, [2, 5, 9, 14, 19, 22, 27, 33, 38, 41, 47, 52, 55, 60])}
-    ${занЛинии(24, 152, 102, 4, 10)}`,
+  'картинка': п => {
+    const h = занСид(п);
+    const небо = ['#EAF2FB', '#FBF0E2', '#E9F6F1', '#F3ECFB'][h % 4];
+    const земля = ['#9FC4A0', '#C9A87C', '#8FB3C9', '#B3A6C9'][(h >>> 3) % 4];
+    const светило = (h >>> 5) % 2 ? '#F6D98A' : '#E3E7EF';
+    const волны = (h >>> 9) % 3 === 0;
+    return '<rect x="16" y="26" width="118" height="100" rx="4" fill="' + небо
+      + '" stroke="var(--border)" stroke-width="1.5"/>'
+      + '<circle cx="' + (44 + (h >>> 11) % 66) + '" cy="50" r="11" fill="' + светило + '"/>'
+      + (волны
+          ? '<path d="M16 100 q14 -8 28 0 t28 0 t28 0 t28 0 v26 H16 Z" fill="' + земля + '"/>'
+          : '<path d="M16 126 L' + (40 + (h >>> 13) % 24) + ' 80 L72 108 L92 88 L134 126 Z" fill="' + земля + '"/>')
+      + '<path d="M16 126 h118" stroke="var(--border)" stroke-width="1"/>'
+      + занЛинии(24, 142, 102, 3, 12);
+  },
 
-  'клетки': () => `
-    <rect x="22" y="20" width="52" height="6" rx="3" fill="var(--muted)" opacity=".7"/>
-    ${занСетка(27, 38, 9, 11, [])}
-    <g fill="var(--muted)" font-size="7" font-family="inherit" opacity=".8">
-      ${[[1,1,'5'],[3,0,'2'],[5,4,'7'],[7,2,'9'],[2,6,'1'],[6,7,'4'],[8,5,'3']]
-        .map(([c, r, т]) => `<text x="${27 + c * 11 + 3.5}" y="${38 + r * 11 + 8}">${т}</text>`).join('')}
-    </g>
-    ${занЛинии(27, 146, 96, 3, 10)}`,
+  'кроссворд': п => {
+    const h = занСид(п);
+    const клеток = [9, 10, 11, 12][(h >>> 3) % 4];
+    const шаг = Math.round(92 / клеток);
+    return '<rect x="22" y="18" width="' + (50 + h % 30) + '" height="6" rx="3" fill="var(--muted)" opacity=".65"/>'
+      + занНоно(44, 46, клеток, шаг, h)
+      + занЛинии(24, 154, 102, 2, 11);
+  },
 
-  'раскраска': () => `
-    <g fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linejoin="round">
-      <path d="M36 128 L75 88 L114 128 Z"/>
-      <rect x="50" y="128" width="50" height="40"/>
-      <rect x="64" y="144" width="16" height="24"/>
-      <circle cx="112" cy="54" r="15"/>
-      <path d="M24 168 h102"/>
-      <path d="M30 150 q8 -16 16 0" />
-    </g>`,
+  'раскраска': п => {
+    const h = занСид(п);
+    return занЛинии(24, 22, 56 + h % 24, 1, 10, 'var(--muted)')
+      + '<g fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linejoin="round" '
+      + 'stroke-linecap="round" transform="translate(0,6)">'
+      + ЗАН_КОНТУРЫ[(h >>> 5) % ЗАН_КОНТУРЫ.length] + '</g>'
+      + '<path d="M22 174 h106" stroke="var(--border)" stroke-width="1.4"/>';
+  },
 
-  'картинка': () => `
-    <rect x="22" y="40" width="106" height="78" rx="3" fill="var(--bg)" stroke="var(--border)" stroke-width="1.5"/>
-    <circle cx="105" cy="60" r="10" fill="var(--border)"/>
-    <path d="M22 118 L52 82 L74 106 L92 90 L128 118 Z" fill="var(--muted)" opacity=".5"/>
-    ${занЛинии(22, 136, 106, 3, 11)}`,
-
-  'открытка': () => `
-    <rect x="18" y="34" width="114" height="80" rx="6" fill="var(--soft-pink, #FDE8EF)"
-      stroke="var(--border)" stroke-width="1.5"/>
-    <path d="M75 92 c-16 -12 -26 -20 -26 -30 a11 11 0 0 1 20 -6 a11 11 0 0 1 20 6 c0 10 -10 18 -26 30 Z"
-      fill="var(--danger)" opacity=".65"/>
-    ${занЛинии(24, 130, 102, 2, 12)}
-    <rect x="24" y="166" width="60" height="2.5" rx="1.2" fill="var(--border)"/>`,
-
-  'поздравление': () => `
-    <rect x="16" y="16" width="118" height="168" rx="6" fill="none"
-      stroke="var(--primary)" stroke-width="2" stroke-dasharray="5 4" opacity=".55"/>
-    <rect x="46" y="38" width="58" height="7" rx="3.5" fill="var(--primary)" opacity=".7"/>
-    <g>${[0,1,2,3].map(i =>
-      `<rect x="${44 + (i % 2) * 6}" y="${64 + i * 15}" width="${62 - (i % 2) * 12}" height="3.4" rx="1.7"
-        fill="var(--border)"/>`).join('')}</g>
-    ${занЛинии(40, 136, 70, 2, 12)}
-    <rect x="46" y="168" width="58" height="2.5" rx="1.2" fill="var(--border)"/>`,
+  'стихи': п => {
+    const h = занСид(п);
+    const цв = ЗАН_АКЦЕНТЫ[(h >>> 3) % 6];
+    const строк = 5 + (h % 3);
+    let строки = '';
+    for (let i = 0; i < строк; i++) {
+      строки += '<rect x="' + (42 + (i % 2) * 7) + '" y="' + (70 + i * 14) + '" width="'
+        + (66 - (i % 2) * 14) + '" height="3.2" rx="1.6" fill="var(--border)"/>';
+    }
+    return '<rect x="14" y="14" width="122" height="172" rx="6" fill="none" stroke="' + цв
+      + '" stroke-width="1.8" stroke-dasharray="' + ((h >>> 7) % 2 ? '5 4' : '1 0') + '" opacity=".5"/>'
+      + '<rect x="44" y="34" width="62" height="6" rx="3" fill="' + цв + '" opacity=".7"/>'
+      + '<rect x="58" y="48" width="34" height="3.4" rx="1.7" fill="var(--muted)" opacity=".6"/>'
+      + строки
+      + '<rect x="46" y="166" width="58" height="2.5" rx="1.2" fill="var(--border)"/>';
+  },
 };
 
 function занСхема(п, класс){
-  const сх = ЗАН_СХЕМЫ[занВид(п.вид).схема] || ЗАН_СХЕМЫ['текст'];
+  const сх = ЗАН_СХЕМЫ[занВид(п.вид).схема] || ЗАН_СХЕМЫ['стихи'];
   return `<svg class="зан-лист ${класс || ''}" viewBox="0 0 ${Л_Ш} ${Л_В}" role="img"
     aria-label="${esc(занВид(п.вид).имя)}: ${esc(п.имя)}">
     <rect x="1" y="1" width="${Л_Ш - 2}" height="${Л_В - 2}" rx="5" fill="#fff"
       stroke="var(--border)" stroke-width="1.5"/>
-    ${сх()}
+    ${сх(п)}
   </svg>`;
 }
 
-/* ---------- карточка материала ---------- */
+/* ---------- разбор новинок подряд ----------
 
-function открытьЗанятость(id){
-  const п = ЗАНЯТОСТЬ.find(x => x.id === id); if (!п) return;
-  const в = занВид(п.вид);
-  S.занОснование = п.основание || ЗАН_ОТКАЗЫ[0];
+   Пять позиций в день разбираются за минуту, если не возвращаться в список
+   после каждой. Поэтому после решения сразу открывается следующая. */
+
+function занРазбор(индекс){
+  const очередь = занЖдут();
+  if (!очередь.length) { toast('Новых материалов нет'); render(); return; }
+  const i = Math.max(0, Math.min(индекс || 0, очередь.length - 1));
+  S.занРазборИндекс = i;
+  занПоказатьРазбор();
+}
+
+function занПоказатьРазбор(){
+  const очередь = занЖдут();
+  if (!очередь.length) { closeModal(); toast('Новинки разобраны'); render(); return; }
+  const i = Math.min(S.занРазборИндекс || 0, очередь.length - 1);
+  const п = очередь[i];
+  S.занОснование = ЗАН_ОТКАЗЫ[0];
 
   modal(`
-    <div class="mh"><div><h3>${esc(п.имя)}</h3>
-      <div class="top-sub">${esc(п.id)} · ${esc(в.имя)} · в каталоге с ${esc(п.добавлен)}</div></div>
-      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mh">
+      <div><h3>${esc(п.имя)}</h3>
+        <div class="top-sub">${esc(занВид(п.вид).имя)} · ${esc(п.повод)}${
+          п.автор ? ' · ' + esc(п.автор) : ''}${п.размер ? ' · ' + esc(п.размер) : ''}</div></div>
+      <button class="x" onclick="closeModal(); render()" aria-label="Закрыть">×</button></div>
     <div class="mb">
-      ${п.решение ? `<div class="note ${п.решение === 'deny' ? 'warn' : ''}" style="margin-top:0">
-        <b>${п.решение === 'allow' ? 'Разрешено к передаче.' : 'К передаче не допущено.'}</b>
-        ${esc(п.проверил || '')}, ${esc(п.проверен || '')}.
-        ${п.основание ? ' Основание: ' + esc(п.основание) + '.' : ''}
-        Решение можно пересмотреть — оно подействует на всё, что будет отправлено дальше;
-        уже переданное останется у людей на руках.</div>` : ''}
+      <div class="progress"><span>Новинки · ${i + 1} из ${очередь.length}</span>
+        <span class="pbar"><i style="width:${Math.round((i + 1) / очередь.length * 100)}%"></i></span></div>
 
       <div class="зан-карточка">
         ${занСхема(п, 'большой')}
         <div>
           <div class="kv">
-            <div class="k">Вид</div><div>${esc(в.имя)}</div>
             <div class="k">Что внутри</div><div>${esc(п.суть)}</div>
             <div class="k">Печать</div>
             <div>${п.цвет ? 'цветная' : 'чёрно-белая'} · ${п.страниц}
               ${plural(п.страниц, 'лист', 'листа', 'листов')} А4</div>
             <div class="k">В каталоге с</div><div>${esc(п.добавлен)}</div>
-            <div class="k">Отправляли</div>
-            <div>${п.отправленийВсего} ${plural(п.отправленийВсего, 'раз', 'раза', 'раз')} за три месяца${
-              п.отправленийСегодня ? ', сегодня — ' + п.отправленийСегодня : ''}</div>
+            <div class="k">Ждут отправки</div>
+            <div><span class="chip o">${п.отправленийСегодня}</span>
+              пока решения нет, материал к людям не уходит</div>
           </div>
-          ${!п.решение && п.отправленийСегодня ? `<div class="note warn">
-            <b>Ждут отправки: ${п.отправленийСегодня}.</b> Пока решения нет, материал
-            к людям не уходит.</div>` : ''}
+          <div class="note" style="margin-bottom:0">Решение принимается один раз на весь
+            каталог: дальше эта позиция уходит всем, кто её отправит, без вашего участия.</div>
         </div>
       </div>
 
-      <div class="note">В прототипе показана схема листа, а не сам материал:
-        настоящие изображения в каталог загружает ЗТ через админку.</div>
-
-      <h3 style="margin:20px 0 10px; font-size:16px">Если не допускать — основание</h3>
-      <div class="seg сборный" style="margin-bottom:4px">
-        ${ЗАН_ОТКАЗЫ.map(о => `<button class="${о === S.занОснование ? 'on' : ''}"
-          onclick="занОснование(this, '${esc(о)}')">${esc(о)}</button>`).join('')}
-      </div>
-      <div class="top-sub">Основание выбирается из списка: в каталоге сотни позиций,
-        и описывать каждую словами никто не станет.</div>
+      <details class="зан-отказ">
+        <summary>Основание, если не допускать</summary>
+        <div class="seg сборный" style="margin-top:10px">
+          ${ЗАН_ОТКАЗЫ.map(о => `<button class="${о === S.занОснование ? 'on' : ''}"
+            onclick="занОснование(this, '${esc(о)}')">${esc(о)}</button>`).join('')}
+        </div>
+      </details>
     </div>
     <div class="mf">
-      <button class="btn" onclick="closeModal()">Закрыть</button>
-      <button class="btn danger" onclick="решениеЗанятости('${п.id}','deny')">
-        ${п.решение === 'deny' ? 'Оставить недопущенным' : 'Не допускать'}</button>
-      <button class="btn primary" onclick="решениеЗанятости('${п.id}','allow')">
-        ${п.решение === 'allow' ? 'Оставить разрешённым' : 'Разрешить к передаче'}</button>
+      <button class="btn sm" onclick="занШаг(-1)" ${i === 0 ? 'disabled' : ''}>←</button>
+      <button class="btn sm" onclick="занШаг(1)" ${i === очередь.length - 1 ? 'disabled' : ''}>→</button>
+      <button class="btn" onclick="closeModal(); render()">Закрыть</button>
+      <button class="btn danger" onclick="решениеЗанятости('${п.id}','deny', true)">Не допускать</button>
+      <button class="btn primary" onclick="решениеЗанятости('${п.id}','allow', true)">Разрешить</button>
     </div>`);
+}
+
+function занШаг(шаг){
+  const очередь = занЖдут();
+  const i = (S.занРазборИндекс || 0) + шаг;
+  if (i < 0 || i >= очередь.length) return;
+  S.занРазборИндекс = i;
+  занПоказатьРазбор();
 }
 
 function занОснование(кнопка, текст){
@@ -9931,151 +10046,185 @@ function занОснование(кнопка, текст){
   S.занОснование = текст;
 }
 
-function решениеЗанятости(id, что){
+/* ---------- карточка позиции каталога ---------- */
+
+function открытьЗанятость(id){
+  const п = ЗАНЯТОСТЬ.find(x => x.id === id); if (!п) return;
+  S.занОснование = п.основание || ЗАН_ОТКАЗЫ[0];
+
+  modal(`
+    <div class="mh"><div><h3>${esc(п.имя)}</h3>
+      <div class="top-sub">${esc(п.id)} · ${esc(занВид(п.вид).имя)} · ${esc(п.повод)}${
+        п.автор ? ' · ' + esc(п.автор) : ''}</div></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb">
+      ${п.решение ? `<div class="note ${п.решение === 'deny' ? 'warn' : ''}" style="margin-top:0">
+        <b>${п.решение === 'allow' ? 'Разрешено к передаче.' : 'К передаче не допущено.'}</b>
+        ${esc(п.проверил || '')}, ${esc(п.проверен || '')}.${
+          п.основание ? ' Основание: ' + esc(п.основание) + '.' : ''}
+        Пересмотр подействует на то, что отправят дальше; уже переданное останется на руках.</div>` : ''}
+
+      <div class="зан-карточка">
+        ${занСхема(п, 'большой')}
+        <div><div class="kv">
+          <div class="k">Что внутри</div><div>${esc(п.суть)}</div>
+          <div class="k">Печать</div>
+          <div>${п.цвет ? 'цветная' : 'чёрно-белая'} · ${п.страниц}
+            ${plural(п.страниц, 'лист', 'листа', 'листов')} А4</div>
+          ${п.сложность ? `<div class="k">Сложность</div><div>${esc(п.сложность)}, поле ${esc(п.размер)}</div>` : ''}
+          <div class="k">В каталоге с</div><div>${esc(п.добавлен)}</div>
+          <div class="k">Отправляли</div>
+          <div>${п.отправленийВсего} ${plural(п.отправленийВсего, 'раз', 'раза', 'раз')} за три месяца${
+            п.отправленийСегодня ? ', сегодня — ' + п.отправленийСегодня : ''}</div>
+        </div></div>
+      </div>
+
+      <details class="зан-отказ">
+        <summary>Основание, если не допускать</summary>
+        <div class="seg сборный" style="margin-top:10px">
+          ${ЗАН_ОТКАЗЫ.map(о => `<button class="${о === S.занОснование ? 'on' : ''}"
+            onclick="занОснование(this, '${esc(о)}')">${esc(о)}</button>`).join('')}
+        </div>
+      </details>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn danger" onclick="решениеЗанятости('${п.id}','deny')">
+        ${п.решение === 'deny' ? 'Оставить недопущенным' : 'Не допускать'}</button>
+      <button class="btn primary" onclick="решениеЗанятости('${п.id}','allow')">
+        ${п.решение === 'allow' ? 'Оставить разрешённым' : 'Разрешить'}</button>
+    </div>`);
+}
+
+function решениеЗанятости(id, что, вРазборе){
   const п = ЗАНЯТОСТЬ.find(x => x.id === id); if (!п) return;
   const былоРешение = п.решение;
   п.решение = что;
   п.основание = что === 'deny' ? (S.занОснование || ЗАН_ОТКАЗЫ[0]) : null;
   п.проверил = профиль().name + ', ' + профиль().post;
   п.проверен = сегодняДок();
-  closeModal();
+
   toast(былоРешение && былоРешение !== что
-    ? (что === 'allow' ? 'Решение пересмотрено: разрешено к передаче' : 'Решение пересмотрено: не допущено')
+    ? 'Решение пересмотрено: ' + (что === 'allow' ? 'разрешено' : 'не допущено')
     : (что === 'allow'
-        ? `Разрешено. Уйдёт всем, кто отправит${п.отправленийСегодня ? ', в том числе ' + п.отправленийСегодня + ' сегодня' : ''}.`
+        ? `Разрешено. Уйдёт ${п.отправленийСегодня} ${plural(п.отправленийСегодня, 'отправителю', 'отправителям', 'отправителям')}.`
         : 'Не допущено. Отправителям уйдёт отказ с основанием.'));
-  render();
+
+  if (вРазборе) {
+    /* Решённая позиция уходит из очереди — на её место встаёт следующая. */
+    занПоказатьРазбор();
+  } else {
+    closeModal(); render();
+  }
 }
 
 /* ---------- экран ---------- */
 
-const ЗАН_ФИЛЬТРЫ = [
-  ['all', 'Все'],
-  ['allow', 'Разрешённые'],
-  ['deny', 'Недопущенные'],
-];
+function занПоводы(вид){
+  return [...new Set(ЗАНЯТОСТЬ.filter(п => п.вид === вид).map(п => п.повод))];
+}
 
 function renderLeisure(){
-  const ждут = занЖдут();
-  const проверено = занПроверено();
-  const ф = S.занФильтр || 'all';
-  const вид = S.занВид || 'all';
+  const очередь = занЖдут();
+  const вид = S.занВид || (ЗАН_ВИДЫ[0] || {}).вид || 'открытка';
+  const повод = S.занПовод || 'all';
   const q = (S.занПоиск || '').trim().toLowerCase();
 
-  let список = проверено;
-  if (ф !== 'all') список = список.filter(п => п.решение === ф);
-  if (вид !== 'all') список = список.filter(п => п.вид === вид);
-  if (q) список = список.filter(п => (п.имя + ' ' + п.id).toLowerCase().includes(q));
+  let список = ЗАНЯТОСТЬ.filter(п => п.вид === вид && п.решение);
+  if (повод !== 'all') список = список.filter(п => п.повод === повод);
+  if (S.занТолькоОтказ) список = список.filter(п => п.решение === 'deny');
+  if (q) список = список.filter(п => (п.имя + ' ' + (п.автор || '') + ' ' + п.id).toLowerCase().includes(q));
   const показ = список.slice(0, S.shown);
 
-  const строкаОчереди = п => `
-    <div class="row">
-      <div class="stripe o"></div>
-      <div>
-        <div class="who">${esc(п.имя)}</div>
-        <div class="meta">${esc(занВид(п.вид).имя)} · в каталоге с ${esc(п.добавлен)}</div>
-        <div class="marks">
-          <span class="chip">${esc(п.id)}</span>
-          <span class="chip ${п.цвет ? 'a' : ''}">${п.цвет ? 'цветная печать' : 'чёрно-белая'}</span>
-          <span class="chip o">ждут отправки: ${п.отправленийСегодня}</span>
-        </div>
-      </div>
-      <div>
-        <div class="sum">Ещё не проверялось</div>
-        <div class="why">Решение принимается один раз и действует на весь каталог</div>
-      </div>
-      <div class="acts"><button class="btn sm primary" onclick="открытьЗанятость('${п.id}')">Посмотреть</button></div>
-    </div>`;
-
-  const строкаПроверенного = п => `
-    <div class="row">
-      <div class="stripe ${п.решение === 'allow' ? 'g' : 'r'}"></div>
-      <div>
-        <div class="who">${esc(п.имя)}</div>
-        <div class="meta">${esc(занВид(п.вид).имя)} · проверено ${esc(п.проверен || '')}</div>
-        <div class="marks">
-          <span class="chip">${esc(п.id)}</span>
-          <span class="chip ${п.решение === 'allow' ? 'g' : 'r'}">${п.решение === 'allow' ? 'разрешено' : 'не допущено'}</span>
-          <span class="chip">отправляли: ${п.отправленийВсего}</span>
-        </div>
-      </div>
-      <div>
-        <div class="sum">${esc(п.суть)}</div>
-        ${п.основание ? `<div class="why">Основание: ${esc(п.основание)}</div>` : ''}
-      </div>
-      <div class="acts"><button class="btn sm" onclick="открытьЗанятость('${п.id}')">Открыть</button></div>
-    </div>`;
+  const плитка = п => `
+    <figure class="зан-плитка ${п.решение === 'deny' ? 'отказ' : ''}"
+            onclick="открытьЗанятость('${п.id}')" title="${esc(п.имя)}">
+      ${занСхема(п)}
+      <figcaption>
+        <span class="зан-имя">${esc(п.имя)}</span>
+        ${п.автор ? `<span class="зан-под">${esc(п.автор)}</span>` : ''}
+        ${п.решение === 'deny' ? '<span class="chip r">не допущено</span>' : ''}
+      </figcaption>
+    </figure>`;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-head"><h1>Полезная занятость</h1>
-      <p>Материалы, которые родственники отправляют как заботу, а ${Т('людей')}
-         заказывают себе сами. Каждая позиция каталога проверяется один раз.</p></div>
-
-    ${ЗАН_ШАПКА ? `<div class="зан-шапка">
-      <div class="зан-цифра">${esc(ЗАН_ШАПКА.текст)}</div>
-      <div class="зан-источник">${esc(ЗАН_ШАПКА.источник)}</div>
-      <div class="зан-оговорка">${esc(ЗАН_ШАПКА.оговорка)}</div>
-    </div>` : ''}
-
-    <div class="stats">
-      <div class="stat"><div class="badge-ico" style="background:var(--soft-beige); color:var(--warning)">${ICON.alert}</div>
-        <div class="k">Ждут проверки</div><div class="v tnum">${ждут.length}</div>
-        <div class="d">новые, и их сегодня отправляют</div></div>
-      <div class="stat"><div class="badge-ico" style="background:var(--lilac); color:var(--primary)">${ICON.dosug}</div>
-        <div class="k">Всего в каталоге</div><div class="v tnum">${ЗАНЯТОСТЬ.length}</div>
-        <div class="d">позиций от ЗТ</div></div>
-      <div class="stat"><div class="badge-ico" style="background:var(--soft-mint); color:var(--success)">${ICON.check}</div>
-        <div class="k">Разрешено</div><div class="v tnum">${ЗАНЯТОСТЬ.filter(п => п.решение === 'allow').length}</div>
-        <div class="d">уходят без повторной проверки</div></div>
-      <div class="stat"><div class="badge-ico" style="background:var(--soft-pink); color:var(--danger)">${ICON.ban}</div>
-        <div class="k">Не допущено</div><div class="v tnum">${ЗАНЯТОСТЬ.filter(п => п.решение === 'deny').length}</div>
-        <div class="d">с основанием</div></div>
+    <div class="page-head head-row">
+      <div><h1>Полезная занятость</h1>
+        <p>Каталог ЗТ: родственники отправляют это как заботу, ${Т('людей')} заказывают сами.
+           Каждая позиция проверяется один раз.</p></div>
+      ${очередь.length ? `<div class="head-acts">
+        <button class="btn primary" onclick="занРазбор(0)">Разобрать новинки · ${очередь.length}</button>
+      </div>` : ''}
     </div>
 
-    <h2 class="sect">Ждут проверки · ${ждут.length}</h2>
-    ${ждут.length ? `
-      <div class="note">Это материалы, которых вы ещё не видели и которые сегодня кто-то
-        отправил. То, что лежит в каталоге без спроса, сюда не попадает и работы не создаёт.</div>
-      <div class="rows">${ждут.map(строкаОчереди).join('')}</div>`
-      : `<div class="empty"><div class="big">${ICON.check}</div><b>Новых материалов нет</b>
-         <div>Всё, что сегодня отправляют, проверено раньше.</div></div>`}
-
-    <h2 class="sect">Проверено ранее · ${проверено.length}</h2>
-    <div class="note">Решение по позиции можно пересмотреть в любой момент. Пересмотр
-      действует на то, что будет отправлено дальше; уже переданное остаётся на руках.</div>
-
-    <div class="bar">
-      <span class="lab">Решение:</span>
-      <div class="seg">
-        ${ЗАН_ФИЛЬТРЫ.map(([к, имя]) =>
-          `<button class="${ф === к ? 'on' : ''}" onclick="S.занФильтр='${к}'; S.shown=30; render()">${имя}</button>`).join('')}
+    ${ЗАН_ШАПКА ? `<details class="зан-строка">
+      <summary><b>${esc(ЗАН_ШАПКА.коротко)}</b> <span class="зан-ещё">подробнее</span></summary>
+      <div class="зан-раскрыто">
+        <div>${esc(ЗАН_ШАПКА.источник)}</div>
+        <div style="margin-top:8px">${esc(ЗАН_ШАПКА.оговорка)}</div>
       </div>
-    </div>
+    </details>` : ''}
+
+    ${очередь.length ? `
+      <div class="зан-новинки">
+        <div>
+          <b>Сегодня новых: ${очередь.length}</b>
+          <div class="top-sub" style="margin-top:4px">Их уже отправляют
+            ${очередь.reduce((s, п) => s + п.отправленийСегодня, 0)}
+            ${plural(очередь.reduce((s, п) => s + п.отправленийСегодня, 0), 'раз', 'раза', 'раз')},
+            но до вашего решения они не уйдут. Остальные
+            ${ЗАНЯТОСТЬ.length - очередь.length} позиций каталога проверены раньше.</div>
+        </div>
+        <div class="зан-ряд">
+          ${очередь.map((п, i) => `
+            <figure class="зан-плитка новая" onclick="занРазбор(${i})" title="${esc(п.имя)}">
+              ${занСхема(п)}
+              <figcaption><span class="зан-имя">${esc(п.имя)}</span>
+                <span class="chip o">ждут: ${п.отправленийСегодня}</span></figcaption>
+            </figure>`).join('')}
+        </div>
+      </div>`
+      : `<div class="note ok">Новинок на сегодня нет: всё, что отправляют, проверено раньше.</div>`}
+
+    <h2 class="sect">Каталог · ${ЗАНЯТОСТЬ.length}</h2>
 
     <div class="bar">
-      <span class="lab">Вид:</span>
       <div class="seg">
-        <button class="${вид === 'all' ? 'on' : ''}" onclick="S.занВид='all'; S.shown=30; render()">Все</button>
         ${ЗАН_ВИДЫ.map(в => {
-          const n = проверено.filter(п => п.вид === в.вид).length;
-          return n ? `<button class="${вид === в.вид ? 'on' : ''}"
-            onclick="S.занВид='${в.вид}'; S.shown=30; render()">${esc(в.имя)} · ${n}</button>` : '';
+          const n = ЗАНЯТОСТЬ.filter(п => п.вид === в.вид).length;
+          return `<button class="${вид === в.вид ? 'on' : ''}"
+            onclick="S.занВид='${в.вид}'; S.занПовод='all'; S.shown=40; render()">${esc(в.имя)} · ${n}</button>`;
         }).join('')}
       </div>
     </div>
 
     <div class="bar">
-      <input id="занq" class="search" placeholder="Поиск по названию или номеру"
+      <span class="lab">Повод:</span>
+      <div class="seg">
+        <button class="${повод === 'all' ? 'on' : ''}" onclick="S.занПовод='all'; S.shown=40; render()">Все</button>
+        ${занПоводы(вид).map(п => {
+          const n = ЗАНЯТОСТЬ.filter(x => x.вид === вид && x.повод === п).length;
+          return `<button class="${повод === п ? 'on' : ''}"
+            onclick="S.занПовод='${esc(п)}'; S.shown=40; render()">${esc(п)} · ${n}</button>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="bar">
+      <input id="занq" class="search" placeholder="Поиск по названию или автору"
              value="${esc(S.занПоиск || '')}"
-             oninput="вводПоиска('занq', v => { S.занПоиск = v; S.shown = 30; renderLeisure(); })">
+             oninput="вводПоиска('занq', v => { S.занПоиск = v; S.shown = 40; renderLeisure(); })">
+      <button class="btn sm ${S.занТолькоОтказ ? 'danger' : ''}"
+        onclick="S.занТолькоОтказ = !S.занТолькоОтказ; S.shown=40; render()">
+        ${S.занТолькоОтказ ? 'Показать все' : 'Только недопущенные'}</button>
       <span class="chip">${показ.length} из ${список.length}</span>
     </div>
 
-    ${показ.length ? `<div class="rows">${показ.map(строкаПроверенного).join('')}</div>
+    ${показ.length ? `<div class="зан-ряд сетка">${показ.map(плитка).join('')}</div>
       ${список.length > показ.length
-        ? `<div class="more"><button class="btn" onclick="S.shown += 40; renderLeisure()">Показать ещё</button>
+        ? `<div class="more"><button class="btn" onclick="S.shown += 60; renderLeisure()">Показать ещё</button>
            <span class="chip">показано ${показ.length} из ${список.length}</span></div>` : ''}`
-      : '<div class="empty"><b>Ничего не найдено</b><div>Снимите фильтры или измените запрос.</div></div>'}
+      : '<div class="empty"><b>Ничего не найдено</b><div>Смените повод или запрос.</div></div>'}
   `;
 }
 
