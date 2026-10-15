@@ -412,6 +412,36 @@ mark.r{background:var(--soft-pink); color:var(--danger); border-bottom-color:var
 .зан-отказ{margin-top:14px; font-size:13.5px}
 .зан-отказ summary{cursor:pointer; color:var(--muted)}
 
+/* Знак подсказки. Своя кнопка, а не всплывание по наведению:
+   работают с планшета, где наведения нет. */
+.подск{display:none; align-items:center; justify-content:center; flex:none;
+  width:20px; height:20px; margin-left:6px; padding:0; vertical-align:middle;
+  border:1px solid var(--primary); background:var(--lilac); color:var(--primary);
+  border-radius:50%; font:inherit; font-size:12px; font-weight:700; line-height:1;
+  cursor:pointer}
+.подск.всегда{display:inline-flex}
+body.подсказки .подск{display:inline-flex}
+.подск:hover{background:var(--primary); color:#fff}
+.подск:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+.tabs .подск{align-self:center; margin:0 4px 0 0}
+
+/* Переключатель режима в шапке: в свёрнутом виде — один знак. */
+.режим-подск{display:inline-flex; align-items:center; gap:7px; flex:none;
+  border:1px solid var(--border); background:var(--bg); color:var(--muted);
+  border-radius:10px; padding:7px 12px; font:inherit; font-size:13px;
+  cursor:pointer; min-height:40px}
+.режим-подск span:first-child{display:grid; place-items:center; width:18px; height:18px;
+  border-radius:50%; border:1px solid currentColor; font-size:11px; font-weight:700}
+.режим-подск:hover{border-color:var(--primary); color:var(--primary)}
+.режим-подск.on{background:var(--lilac); border-color:var(--primary); color:var(--primary)}
+@media (max-width:1100px){ .режим-слово{display:none} .режим-подск{padding:7px 9px} }
+
+/* Строка в окне «что значат стопки» */
+.подск-строка{display:grid; grid-template-columns:116px 1fr; gap:14px;
+  align-items:start; padding:12px 0; border-bottom:1px solid var(--border)}
+.подск-строка:last-of-type{border-bottom:0}
+.подск-строка .chip{justify-self:start}
+
 /* ---------- зона скана заявления ---------- */
 .drop-зона{border:2px dashed var(--border); border-radius:16px; padding:26px 20px;
   text-align:center; background:var(--bg); margin-bottom:16px}
@@ -810,6 +840,10 @@ input.кд-сомн{border-color:var(--warning)!important; background:var(--soft
         <!-- На планшете боковая панель сворачивается до значков, и выбор роли
              с выбором учреждения туда не помещаются. Поэтому на узких экранах
              они живут здесь: без них доступна одна-единственная роль. -->
+        <button class="режим-подск ${S.подсказки ? 'on' : ''}" onclick="переключитьПодсказки()"
+          aria-pressed="${S.подсказки ? 'true' : 'false'}"
+          title="Подсказки у непонятных кнопок — для новичка и для вернувшегося из отпуска">
+          <span aria-hidden="true">?</span><span class="режим-слово">Подсказки</span></button>
         <div class="top-switch">
           <select id="roleSelectTop" onchange="сменитьРоль(this.value)" aria-label="Режим работы">
             <option value="censor">Цензор</option>
@@ -1053,6 +1087,7 @@ const S = {
   звПериод:'last', звПоиск:'', звВид:'all', звУровень:'all',
   занВид:'открытка', занПовод:'all', занПоиск:'', занОснование:null,
   занАвто:{},                // разделы, одобряемые автоматически
+  подсказки:false,           // режим подсказок для новичка
   занТолькоОтказ:false, занРазборИндекс:0,
   звДата:null, звС:null, звПо:null,   // поиск по записям переговоров
   доступЧерновик:null,       // наборы разделов, пока их правят
@@ -1220,6 +1255,12 @@ function сменитьРоль(r){
   render();
   toast('Режим работы: ' + РОЛИ[r].имя);
 }
+/* Режим подсказок живёт классом на теле: так значки показываются
+   и скрываются одним правилом, без перебора элементов. */
+function синхроПодсказки(){
+  document.body.classList.toggle('подсказки', !!S.подсказки);
+}
+
 function renderNav(){
   const роль = РОЛИ[S.role];
   const счёт = {
@@ -1343,7 +1384,7 @@ function renderQueue(){
     <div class="page-head head-row">
       <div><h1>Лента цензуры</h1><p>Материалы за смену разложены по трём стопкам. Начните с зелёных.</p></div>
       <div class="head-acts">
-        <button class="btn sm" onclick="openPaperMode()">${ICON.printer} Бумажный путь: ${PAPER_LABEL[S.paper]}</button>
+        <button class="btn sm" onclick="openPaperMode()">${ICON.printer} Бумажный путь: ${PAPER_LABEL[S.paper]}</button>${знак('бумага')}
       </div>
     </div>
     <div class="stats">
@@ -1355,17 +1396,18 @@ function renderQueue(){
     </div>
 
     <div class="bar">
-      <span class="lab">День:</span>
+      <span class="lab">День:${знак('день')}</span>
       <div class="seg">
         ${Object.keys(SETS).map(k=>`<button class="${S.set===k?'on':''}" onclick="setSet('${k}')">${SETS[k]}</button>`).join('')}
       </div>
-      <span class="lab" style="margin-left:12px">Режим доверия:</span>
+      <span class="lab" style="margin-left:12px">Режим доверия:${знак('доверие')}</span>
       <div class="seg">
         ${['full','half','manual'].map(t=>`<button class="${S.trust===t?'on':''}" onclick="setTrust('${t}')">${TRUST_LABEL[t]}</button>`).join('')}
       </div>
     </div>
 
     <div class="tabs">
+      ${знак('стопки', true)}
       ${['green','orange','red'].map(k=>`
         <button class="tab ${RISK_LETTER[k]} ${S.stack===k?'on':''}" onclick="setStack('${k}')">
           <span class="dot"></span>
@@ -1383,7 +1425,7 @@ function renderQueue(){
 
     ${cur.length ? `
       ${bulk.length ? `<div class="actionbar">
-        <div class="txt"><b>${actionText[0]}</b> — ${actionText[1]}</div>
+        <div class="txt"><b>${actionText[0]}</b>${знак('согласовать')} — ${actionText[1]}</div>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
           ${S.stack === 'red' ? `<button class="btn" onclick="передатьСтопку()">Оперативнику · ${bulk.length}</button>` : ''}
           ${allowed
@@ -1513,7 +1555,7 @@ function rowHTML(x){
         ? `<button class="btn sm primary" onclick="decide('${x.id}','allow')" title="Текст прочитан здесь же">Пропустить</button>` : ''}
       <button class="btn sm" onclick="openContext('${x.id}')" title="История переписки за три месяца">Контекст</button>
       ${адресатНеПодтверждён(x) ? `<button class="btn sm" onclick="внестиАдресата('${x.id}')" title="Личность адресата не подтверждена">Адресат</button>` : ''}
-      <button class="btn sm" onclick="передатьОперативнику('${x.id}')" title="Передать оперативному сотруднику">Оперативнику</button>
+      <button class="btn sm" onclick="передатьОперативнику('${x.id}')" title="Передать оперативному сотруднику">Оперативнику</button>${знак('оперативнику')}
       <button class="btn sm ${короткий && x.risk !== 'red' ? '' : 'primary'}" onclick="openCard('${x.id}')">Открыть</button>
     </div>
   </div>`;
@@ -1690,11 +1732,12 @@ function renderCard(){
           <span class="лист-номер tnum">${номер + 1} из ${список.length}</span>
           <button class="btn sm" onclick="листать(1)" ${номер === список.length - 1 ? 'disabled' : ''}
             title="Следующий материал · стрелка вправо">→</button>
+          ${знак('листалка')}
         </div>`; })()}
-      <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>
+      <button class="btn sm" onclick="openContext('${x.id}')">Контекст</button>${знак('контекст')}
       <button class="btn sm" onclick="openPrint('${x.id}')">Печать</button>
       <span class="chip ${RISK_LETTER[x.risk]}">${RISK_ONE[x.risk]}</span>
-      ${x.sample?'<span class="chip a">точечный контроль</span>':''}
+      ${x.sample?'<span class="chip a">точечный контроль</span>' + знак('выборка'):''}
       ${x.protected?'<span class="chip a">защищённая переписка</span>':''}
     </div>
 
@@ -1725,7 +1768,7 @@ function renderCard(){
           <div style="display:flex; gap:8px; flex-wrap:wrap">
             <button class="btn primary" onclick="decide('${x.id}','allow')">Разрешить</button>
             <button class="btn danger" onclick="decide('${x.id}','deny')">Не допустить</button>
-            ${x.kind==='text' && !x.protected ? `<button class="btn" onclick="openRedact('${x.id}')">Вымарать фрагмент</button>`:''}
+            ${x.kind==='text' && !x.protected ? `<button class="btn" onclick="openRedact('${x.id}')">Вымарать фрагмент</button>${знак('вымарать')}`:''}
             ${x.protected ? '' : `<button class="btn" onclick="передатьОперативнику('${x.id}')">Оперативнику</button>`}
           </div>
           ${x.protected ? '' : `<div class="top-sub" style="margin-top:10px">Передача оперативнику —
@@ -10310,12 +10353,12 @@ function renderLeisure(){
 
   document.getElementById('content').innerHTML = `
     <div class="page-head head-row">
-      <div><h1>Печатные вложения</h1>
+      <div><h1>Печатные вложения${знак('вложения')}</h1>
         <p>То, что вкладывается в письма: открытки, картинки, кроссворды, стихи, «Вестник».
            Каждая позиция проверяется один раз и дальше уходит без вашего участия.</p></div>
       <div class="head-acts">
         ${ждут.length ? `<button class="btn" onclick="занОдобритьВсе()">Одобрить все · ${ждут.length}</button>` : ''}
-        ${решеноСегодня.length ? `<button class="btn" onclick="занЗавершитьДень()">Завершить день</button>` : ''}
+        ${решеноСегодня.length ? `<button class="btn" onclick="занЗавершитьДень()">Завершить день</button>${знак('завершить')}` : ''}
         ${ждут.length ? `<button class="btn primary" onclick="занРазбор(0)">Разобрать подряд</button>` : ''}
       </div>
     </div>
@@ -10332,7 +10375,7 @@ function renderLeisure(){
         всё уйдёт при завершении дня.</div>
 
       <div class="bar зан-авто">
-        <span class="lab">Одобрять раздел автоматически:</span>
+        <span class="lab">Одобрять раздел автоматически:${знак('автоодобрение')}</span>
         ${видыНаСтоле.map(в => `
           <button class="btn sm ${занАвтоВкл(в.вид) ? 'primary' : ''}"
             onclick="занПереключитьАвто('${в.вид}')"
@@ -10396,9 +10439,104 @@ function renderLeisure(){
   `;
 }
 
+/* ================== ПОДСКАЗКИ ==================
+
+   Две разные вещи, и путать их нельзя.
+
+   1. Знак «?» рядом со стопками — он нужен всегда. Что означают зелёный,
+      оранжевый и красный, не написано нигде, а это основа работы. Объяснение
+      не занимает высоты: один значок, по нажатию — окно.
+
+   2. Режим подсказок — для новичка и для вернувшегося из отпуска. Пока он
+      включён, рядом с непонятными кнопками появляются такие же значки.
+      Выключен — интерфейс чистый, как был.
+
+   Почему значок, а не всплывание по наведению: работают с планшета, где
+   наведения нет вовсе. Значок — отдельная кнопка, нажатие на неё не трогает
+   сам орган управления.
+
+   Подсказки короткие. Длинную никто не читает, а длинная подсказка обычно
+   значит, что плохо названа кнопка, — это чинится переименованием, а не
+   текстом. */
+
+const ПОДСКАЗКИ = {
+  стопки: {
+    титул: 'Что значат стопки',
+    строки: [
+      ['g', 'Зелёные', 'Признаков нарушения анализатор не нашёл. Можно согласовать всю стопку одним действием. Каждый двадцатый помечен для точечного контроля — его можно открыть и убедиться, что машина не ошибается.'],
+      ['o', 'Оранжевые', 'Есть косвенные признаки или местный маркер: машина не уверена. Решение только поштучно — уверенность здесь ваша, а не её. Это самая дорогая стопка по времени.'],
+      ['r', 'Красные', 'Прямой признак запрещённой темы. Недопуск затрагивает права и требует мотивированного решения по каждому материалу; акт формируется автоматически и уходит начальнику на подпись.'],
+    ],
+    низ: 'Раскладывает анализатор, решает человек. Любое его решение можно изменить.',
+  },
+};
+
+/* Короткие подсказки на органах управления. Ключ — чтобы не писать
+   один и тот же текст в разметке по два раза. */
+const П = {
+  доверие: 'Насколько вы доверяете разбору машины. В полном доверии зелёные уходят без открытия, в ручном вы открываете каждое письмо. Переключается в любой момент и ни на что, кроме вашей работы, не влияет.',
+  выборка: 'Каждый двадцатый зелёный помечен для проверки. Это не задержка: помеченные уходят вместе со всеми, открывать их — ваше право, а не обязанность.',
+  согласовать: 'Разом разрешает всю зелёную стопку. Перед этим покажем список и дадим убрать лишнее.',
+  бумага: 'Каким путём материалы пришли: бумагой, цифрой или вперемешку. Переключатель для демонстрации — в работе источник определяется сам.',
+  день: 'Набор материалов для демонстрации: обычный день или пиковый. В работе этого переключателя нет.',
+  вымарать: 'Изъять фрагмент, остальное пропустить. У адресата на месте изъятого будут чёрные полосы по длине слов — текста там нет, скопировать нечего.',
+  оперативнику: 'Когда решение зависит от сведений, которых у вас нет. Материал уйдёт из ваших стопок, решение примет оперативный сотрудник.',
+  контекст: 'Вся переписка этого человека с этим адресатом за три месяца: сколько писем, были ли недопуски и вымарывания.',
+  листалка: 'Переход к соседнему материалу той же стопки, не возвращаясь в ленту. Работают и стрелки на клавиатуре.',
+  адресат: 'Личность получателя не подтверждена оперативным сотрудником либо его нет в картотеке. Можно внести его или отклонить письмо.',
+  вложения: 'Материалы из каталога ЗТ, которые вкладываются в письма. Каждую позицию проверяют один раз: дальше она уходит всем, кто её отправит, без вашего участия.',
+  автоодобрение: 'Раздел будет одобряться без вашего просмотра. Отметка «одобрено автоматически» остаётся в журнале, выключить можно в любой момент.',
+  завершить: 'Решённое за день уйдёт в «Проверенные ранее». Непроверенное останется на столе и будет ждать завтра.',
+};
+
+/* Значок рядом с органом управления. Виден всегда, если всегда:true,
+   иначе — только во включённом режиме подсказок. */
+function знак(ключ, всегда){
+  return `<button class="подск${всегда ? ' всегда' : ''}" data-п="${ключ}"
+    onclick="event.stopPropagation(); окноПодсказки('${ключ}')"
+    aria-label="Подсказка" title="Подсказка">?</button>`;
+}
+
+function окноПодсказки(ключ){
+  if (ключ === 'стопки') {
+    const с = ПОДСКАЗКИ.стопки;
+    modal(`
+      <div class="mh"><div><h3>${esc(с.титул)}</h3>
+        <div class="top-sub">Анализатор раскладывает, решение принимаете вы</div></div>
+        <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+      <div class="mb">
+        ${с.строки.map(([ц, имя, текст]) => `
+          <div class="подск-строка">
+            <span class="chip ${ц}">${esc(имя)}</span>
+            <div>${esc(текст)}</div>
+          </div>`).join('')}
+        <div class="note" style="margin-bottom:0">${esc(с.низ)}</div>
+      </div>
+      <div class="mf"><button class="btn primary" onclick="closeModal()">Понятно</button></div>`);
+    return;
+  }
+  const текст = П[ключ];
+  if (!текст) return;
+  modal(`
+    <div class="mh"><div><h3>Подсказка</h3></div>
+      <button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></div>
+    <div class="mb"><p style="margin:0; font-size:15.5px; line-height:1.6">${esc(текст)}</p></div>
+    <div class="mf"><button class="btn primary" onclick="closeModal()">Понятно</button></div>`);
+}
+
+function переключитьПодсказки(){
+  S.подсказки = !S.подсказки;
+  document.body.classList.toggle('подсказки', S.подсказки);
+  toast(S.подсказки
+    ? 'Подсказки включены: у непонятных кнопок появился знак вопроса'
+    : 'Подсказки выключены');
+  render();
+}
+
 /* ---------------- маршрутизация ---------------- */
 function render(){
   renderNav();
+  синхроПодсказки();
   const T = {
     queue:       ['Лента цензуры', 'Понедельник, 28 сентября 2026 · смена 08:00–20:00'],
     dosug:       ['Бланки досуга', 'Ответы на бумаге: проверены машиной, утверждаете вы'],
